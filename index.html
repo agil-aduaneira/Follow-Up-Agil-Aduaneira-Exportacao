@@ -902,6 +902,15 @@ function renderForm(p) {
     <div class="fg"><label>Deadline Carga (Embarque)</label><input id="f-deadlineCarga" value="${v('deadlineCarga')}" placeholder="dd/mm/aaaa hh:mm"></div>
     <div class="fg"><label>Envio Faturamento</label><input id="f-envFaturamento" value="${v('envFaturamento')}" placeholder="dd/mm/aaaa hh:mm"></div>
 
+    ${customCols.length ? `
+    <div class="fsec">Campos Personalizados</div>
+    ${customCols.map(cc => {
+      const inputType = cc.type === 'number' ? 'number' : 'text';
+      const placeholder = cc.type === 'date' ? 'dd/mm/aaaa' : '';
+      return `<div class="fg"><label>${cc.label}</label><input id="f-${cc.colId}" type="${inputType}" value="${v(cc.field)}" placeholder="${placeholder}"></div>`;
+    }).join('')}
+    ` : ''}
+
     <div class="fg full"><label>Observações</label><textarea id="f-obs">${v('obs')}</textarea></div>
   </div>`;
 
@@ -969,6 +978,12 @@ function saveProc() {
 
   const obj = {};
   KEYS.forEach((k,i) => { const el=document.getElementById(IDS[i]); if(el) obj[k]=el.value.trim(); });
+
+  // Campos personalizados (criados via "+ Adicionar Coluna")
+  customCols.forEach(cc => {
+    const el = document.getElementById('f-' + cc.colId);
+    if (el) obj[cc.field] = el.value.trim();
+  });
 
   if (obj.cliente && obj.cliente.trim()) addCliente(obj.cliente.trim());
 
@@ -1243,7 +1258,9 @@ function loadCols() {
       const missing = allIds.filter(id => !valid.includes(id));
       colOrder = [...valid, ...missing];
     } else {
-      colOrder = [...DEFAULT_COL_ORDER];
+      // Primeiro carregamento: padrão + quaisquer colunas personalizadas já registradas
+      const customIds = ALL_COLS.filter(c => c.custom).map(c => c.id);
+      colOrder = [...DEFAULT_COL_ORDER, ...customIds.filter(id => !DEFAULT_COL_ORDER.includes(id))];
     }
   } catch(e) { colOrder = [...DEFAULT_COL_ORDER]; }
 }
@@ -1311,6 +1328,79 @@ function colDragEnd(e) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+//  CUSTOM COLUMNS (campos personalizados criados pelo usuário)
+// ═══════════════════════════════════════════════════════════════
+const STORAGE_CUSTOM_COLS = 'agilexp_custom_cols_v1';
+let customCols = [];
+
+function loadCustomCols() {
+  try {
+    const s = localStorage.getItem(STORAGE_CUSTOM_COLS);
+    customCols = s ? JSON.parse(s) : [];
+  } catch(e) { customCols = []; }
+  customCols.forEach(registerCustomCol);
+}
+function saveCustomCols() {
+  try { localStorage.setItem(STORAGE_CUSTOM_COLS, JSON.stringify(customCols)); } catch(e){}
+}
+
+function customColRender(cc) {
+  if (cc.type === 'number') {
+    return p => `<td style="font-size:11px;text-align:right">${(p[cc.field]!==undefined && p[cc.field]!=='') ? p[cc.field] : '—'}</td>`;
+  }
+  // texto e data renderizam igual (data fica como string dd/mm/aaaa digitada pelo usuário)
+  return p => `<td style="font-size:11px">${p[cc.field] || '—'}</td>`;
+}
+
+function registerCustomCol(cc) {
+  if (ALL_COLS.find(c => c.id === cc.colId)) return; // já registrada nesta sessão
+  ALL_COLS.push({
+    id: cc.colId,
+    label: cc.label,
+    custom: true,
+    type: cc.type || 'text',
+    render: customColRender(cc)
+  });
+  if (!colOrder.includes(cc.colId)) colOrder.push(cc.colId);
+}
+
+function addCustomCol() {
+  const labelEl = document.getElementById('newcol-label');
+  const typeEl  = document.getElementById('newcol-type');
+  const label = (labelEl.value || '').trim();
+  const type  = typeEl.value;
+  if (!label) { labelEl.focus(); showToast('Informe o nome da coluna.'); return; }
+
+  const colId = 'custom_' + Date.now();
+  const cc = { colId, label, field: colId, type };
+  customCols.push(cc);
+  saveCustomCols();
+  registerCustomCol(cc);
+  saveCols();
+
+  labelEl.value = '';
+  renderThead();
+  render();
+  renderColMgr();
+  showToast('✓ Coluna "' + label + '" adicionada! Já aparece no formulário do processo.');
+}
+
+function removeCustomCol(colId) {
+  if (!confirm('Remover esta coluna personalizada? Os dados já preenchidos nela serão mantidos no banco, mas o campo deixará de aparecer no formulário e na tabela.')) return;
+  customCols = customCols.filter(c => c.colId !== colId);
+  saveCustomCols();
+  colOrder = colOrder.filter(id => id !== colId);
+  hiddenCols = hiddenCols.filter(id => id !== colId);
+  const idx = ALL_COLS.findIndex(c => c.id === colId);
+  if (idx >= 0) ALL_COLS.splice(idx, 1);
+  saveCols(); saveHiddenCols();
+  renderThead();
+  render();
+  renderColMgr();
+  showToast('Coluna removida.');
+}
+
+// ═══════════════════════════════════════════════════════════════
 //  COLUMN MANAGER (in Cadastros panel)
 // ═══════════════════════════════════════════════════════════════
 const STORAGE_HIDDEN = 'agilexp_hidden_cols_v1';
@@ -1343,6 +1433,20 @@ function renderColMgr() {
     <p style="font-size:11px;color:var(--g500);margin-bottom:12px;line-height:1.5">
       Ative/desative colunas com o toggle. Arraste para reordenar — a ordem aqui é a ordem na tabela.
     </p>
+
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;padding:10px;
+      background:var(--g50);border:1px solid var(--g200);border-radius:var(--r8)">
+      <input id="newcol-label" placeholder="Nome da nova coluna (ex: Numerário)"
+        style="width:100%;height:32px;padding:0 9px;border:1px solid var(--g200);border-radius:var(--r4);font-size:12px;outline:none">
+      <select id="newcol-type"
+        style="width:100%;height:32px;padding:0 9px;border:1px solid var(--g200);border-radius:var(--r4);font-size:12px;outline:none;background:#fff">
+        <option value="text">Texto</option>
+        <option value="date">Data (dd/mm/aaaa)</option>
+        <option value="number">Número</option>
+      </select>
+      <button class="btn-cad-add" onclick="addCustomCol()" style="width:100%">+ Adicionar Coluna</button>
+    </div>
+
     <div id="col-mgr-list">
       ${buildColMgrRows()}
     </div>
@@ -1390,21 +1494,30 @@ function cmDragEnd(e) {
 }
 
 function buildColMgrRows() {
-  let rows = '';
+  let rows = '', shownCustomSep = false;
   for (const id of colOrder) {
     const col = ALL_COLS.find(c => c.id === id);
     if (!col) continue;
+    const isCustom = !!col.custom;
+    if (isCustom && !shownCustomSep) {
+      shownCustomSep = true;
+      rows += '<div style="font-size:10px;font-weight:600;color:var(--g400);text-transform:uppercase;letter-spacing:.05em;padding:10px 2px 4px;border-top:1px solid var(--g100);margin-top:4px">Colunas personalizadas</div>';
+    }
     const active = !hiddenCols.includes(id);
     const chk = active ? 'checked' : '';
+    const delBtn = isCustom
+      ? '<button onclick="removeCustomCol(\'' + id + '\')" style="background:none;border:none;color:var(--g400);font-size:14px;cursor:pointer;padding:2px 6px;flex-shrink:0" title="Excluir coluna">×</button>'
+      : '';
     rows += '<div class="col-mgr-item" draggable="true" data-cid="' + id + '"'
       + ' ondragstart="cmDragStart(event)" ondragover="cmDragOver(event)"'
       + ' ondragleave="cmDragLeave(event)" ondrop="cmDrop(event)" ondragend="cmDragEnd(event)">'
       + '<span class="col-mgr-handle">⠿</span>'
-      + '<span class="col-mgr-name">' + col.label + '</span>'
+      + '<span class="col-mgr-name">' + col.label + (isCustom ? ' <span style="color:var(--g300);font-size:10px">(personalizada)</span>' : '') + '</span>'
       + '<label class="col-toggle">'
       + '<input type="checkbox" ' + chk + ' onchange="toggleCol(\'' + id + '\')">'
       + '<span class="col-toggle-slider"></span>'
       + '</label>'
+      + delBtn
       + '</div>';
   }
   return rows;
@@ -1428,7 +1541,7 @@ document.getElementById('overlay').addEventListener('click', e => {
 });
 document.addEventListener('keydown', e => { if(e.key==='Escape') { closeModal(); closePanel(); } });
 
-load(); loadStatusRules(); loadCols(); loadHiddenCols(); populateSelects(); renderThead(); render();
+load(); loadStatusRules(); loadCustomCols(); loadCols(); loadHiddenCols(); populateSelects(); renderThead(); render();
 
 </script>
 
