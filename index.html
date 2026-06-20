@@ -929,7 +929,7 @@ function renderForm(p) {
 
     <div class="fg full"><label>Exportador</label>
       <div class="ac-wrap">
-        <input id="f-cliente" value="${v('cliente')}" autocomplete="off" placeholder="Digite ou selecione..." oninput="acFilter()" onfocus="acFilter(true)">
+        <input id="f-form-cliente" value="${v('cliente')}" autocomplete="off" placeholder="Digite ou selecione..." oninput="acFilter()" onfocus="acFilter(true)">
         <div class="ac-list" id="ac-list">
           ${cliOptions}
           ${clientes.length?'<div class="ac-item" style="color:var(--g400);font-style:italic" onclick="acClose()">── Digitar novo exportador ──</div>':''}
@@ -938,7 +938,10 @@ function renderForm(p) {
     </div>
 
     <div class="fg full"><label>Serviço</label>
-      <input id="f-servico" value="${v('servico') || 'Exportação Marítima'}" placeholder="Ex: Exportação Marítima">
+      <select id="f-form-servico">
+        <option value="Exportação Marítima" ${v('servico')==='Exportação Marítima' || !v('servico') ? 'selected' : ''}>Exportação Marítima</option>
+        <option value="Exportação Aérea" ${v('servico')==='Exportação Aérea' ? 'selected' : ''}>Exportação Aérea</option>
+      </select>
     </div>
     <div class="fg"><label>Nº DUE</label><input id="f-due" value="${v('due')}"></div>
 
@@ -975,7 +978,7 @@ function renderForm(p) {
 
 // ── AUTOCOMPLETE (cliente) ──────────────────────────────────────
 function acFilter(forceAll) {
-  const input = document.getElementById('f-cliente');
+  const input = document.getElementById('f-form-cliente');
   const list  = document.getElementById('ac-list');
   if (!input || !list) return;
   // Ao focar o campo (mesmo já preenchido), mostra a lista completa de
@@ -991,7 +994,7 @@ function acFilter(forceAll) {
   ).join('');
   if (q && !exactMatch) {
     html2 += `<div class="ac-item" style="color:var(--blue);font-weight:600;border-top:1px solid var(--g100)"
-      onclick="acSelect(document.getElementById('f-cliente').value)">
+      onclick="acSelect(document.getElementById('f-form-cliente').value)">
       ✚ Usar "<strong>${q}</strong>" como novo exportador</div>`;
   }
   if (!html2) { list.classList.remove('open'); return; }
@@ -999,7 +1002,7 @@ function acFilter(forceAll) {
   list.classList.add('open');
 }
 function acSelect(val) {
-  const input = document.getElementById('f-cliente');
+  const input = document.getElementById('f-form-cliente');
   if (input) { input.value = val; }
   acClose();
 }
@@ -1023,11 +1026,13 @@ function saveProc() {
   const rc = document.getElementById('f-refCli').value.trim();
   if (!rc) { alert('Ref. Cliente é obrigatória.'); return; }
 
-  const KEYS = ['agex','refCli','cliente','servico','due','obs'];
-  const IDS  = ['f-agex','f-refCli','f-cliente','f-servico','f-due','f-obs'];
-
   const obj = {};
-  KEYS.forEach((k,i) => { const el=document.getElementById(IDS[i]); if(el) obj[k]=el.value.trim(); });
+  obj.agex     = document.getElementById('f-agex').value.trim();
+  obj.refCli   = document.getElementById('f-refCli').value.trim();
+  obj.cliente  = document.getElementById('f-form-cliente').value.trim();
+  obj.servico  = document.getElementById('f-form-servico').value.trim();
+  obj.due      = document.getElementById('f-due').value.trim();
+  obj.obs      = document.getElementById('f-obs').value.trim();
 
   // Campos de Data + Hora (8 eventos). Salva separados e também limpa
   // o campo antigo (formato único) para não ficar dado duplicado/desatualizado.
