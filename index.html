@@ -462,7 +462,7 @@ thead th .col-label { padding-left:4px; }
   <div class="toolbar">
     <div class="srch">
       <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-      <input id="srch" type="text" placeholder="Ref., AGEX, DUE, cliente...">
+      <input id="srch" type="text" placeholder="Ref., AGEX, DUE, exportador...">
     </div>
     <select class="fsel" id="f-servico"><option value="">Todos os serviços</option></select>
     <select class="fsel" id="f-cliente"><option value="">Todos os clientes</option></select>
@@ -565,6 +565,32 @@ function addCliente(nome) {
 // ═══════════════════════════════════════════════════════════════
 function fv(v) { return v || '—'; }
 
+// Lê um campo de evento (ex: 'recebimento') combinando <campo>Data + <campo>Hora.
+// Mantém compatibilidade com processos antigos que ainda guardam tudo num campo
+// único "dd/mm/aaaa hh:mm" (formato anterior, sem Data/Hora separados).
+function dtOf(p, campo) {
+  const d = (p[campo + 'Data'] || '').trim();
+  const h = (p[campo + 'Hora'] || '').trim();
+  if (d) return h ? `${d} ${h}` : d;
+  return p[campo] || ''; // fallback formato antigo
+}
+// Só a Data (para colunas separadas na tabela)
+function dOf(p, campo) {
+  const d = (p[campo + 'Data'] || '').trim();
+  if (d) return d;
+  const old = (p[campo] || '').trim();
+  const m = old.match(/^(\d{2}\/\d{2}\/\d{4})/);
+  return m ? m[1] : '';
+}
+// Só a Hora (para colunas separadas na tabela)
+function hOf(p, campo) {
+  const h = (p[campo + 'Hora'] || '').trim();
+  if (h) return h;
+  const old = (p[campo] || '').trim();
+  const m = old.match(/(\d{1,2}:\d{2})\s*$/);
+  return m ? m[1] : '';
+}
+
 function parseDateTime(str) {
   if (!str) return null;
   const s = str.trim();
@@ -587,7 +613,7 @@ function diffHours(dtStr) {
   return (dt - now) / 3600000;
 }
 function pct(p) {
-  return Math.round(ETAPAS.filter(e => !!p[e.k]).length / ETAPAS.length * 100);
+  return Math.round(ETAPAS.filter(e => !!dtOf(p, e.k)).length / ETAPAS.length * 100);
 }
 function pgHTML(p) {
   const v = pct(p);
@@ -622,10 +648,12 @@ function deadlineCandidates() {
   const out = [];
   procs.filter(p => !p.finalizado).forEach(p => {
     let label, dtStr, kind;
-    if (!p.draft && p.deadlineDraft) {
-      label = 'Draft'; dtStr = p.deadlineDraft; kind = 'draft';
-    } else if (!p.desembaraco && p.deadlineCarga) {
-      label = 'Embarque'; dtStr = p.deadlineCarga; kind = 'carga';
+    const draftDone = dtOf(p,'draft'), deadlineDraftV = dtOf(p,'deadlineDraft');
+    const desembDone = dtOf(p,'desembaraco'), deadlineCargaV = dtOf(p,'deadlineCarga');
+    if (!draftDone && deadlineDraftV) {
+      label = 'Draft'; dtStr = deadlineDraftV; kind = 'draft';
+    } else if (!desembDone && deadlineCargaV) {
+      label = 'Embarque'; dtStr = deadlineCargaV; kind = 'carga';
     } else {
       return;
     }
@@ -703,8 +731,8 @@ function closePanel() {
 function renderKPIs() {
   const all = procs.filter(p => !p.finalizado);
   const fin = procs.filter(p => p.finalizado);
-  const agDraft  = all.filter(p => !p.draft).length;
-  const agDesemb = all.filter(p => p.draft && !p.desembaraco).length;
+  const agDraft  = all.filter(p => !dtOf(p,'draft')).length;
+  const agDesemb = all.filter(p => dtOf(p,'draft') && !dtOf(p,'desembaraco')).length;
   const candidates = deadlineCandidates();
   const atrasados = candidates.filter(x => x.hours < 0).length;
   document.getElementById('kpis-area').innerHTML = `
@@ -723,7 +751,7 @@ function populateSelects() {
   const cliSel = document.getElementById('f-cliente');
   const curSvc = svcSel.value, curCli = cliSel.value;
   svcSel.innerHTML = '<option value="">Todos os serviços</option>';
-  cliSel.innerHTML = '<option value="">Todos os clientes</option>';
+  cliSel.innerHTML = '<option value="">Todos os exportadores</option>';
   const allServicos = [...new Set(procs.map(p=>p.servico).filter(Boolean))].sort();
   allServicos.forEach(s => { svcSel.innerHTML += `<option value="${s}" ${s===curSvc?'selected':''}>${s}</option>`; });
   const allClientes = [...new Set([...clientes, ...procs.map(p=>p.cliente).filter(Boolean)])].sort();
@@ -774,17 +802,17 @@ function render() {
 // ═══════════════════════════════════════════════════════════════
 function buildTL(p) {
   let last = -1;
-  ETAPAS.forEach((e,i) => { if(p[e.k]) last=i; });
+  ETAPAS.forEach((e,i) => { if(dtOf(p, e.k)) last=i; });
   const curr = last < ETAPAS.length-1 ? last+1 : last;
   return `<div class="tlwrap">
     <div class="tltitle">Linha do Tempo</div>
     <div class="tl">
       ${ETAPAS.map((e,i) => {
-        const done=!!p[e.k], isCurr=!done&&i===curr;
+        const done=!!dtOf(p, e.k), isCurr=!done&&i===curr;
         return `<div class="tl-s ${done?'done':isCurr?'curr':''}">
           <div class="tl-dot">${done?'✓':isCurr?'◎':i+1}</div>
           <div class="tl-lbl">${e.l.replace('\n','<br>')}</div>
-          <div class="tl-dt">${p[e.k]||''}</div>
+          <div class="tl-dt">${dtOf(p, e.k)||''}</div>
         </div>`;
       }).join('')}
     </div>
@@ -798,7 +826,7 @@ function openDetail(id) {
   document.getElementById('m-body').innerHTML = buildTL(p) + `
   <div class="dgrid">
     <div class="dsec">Identificação</div>
-    <div class="di"><div class="dl">Cliente</div><div class="dv" style="font-size:12px">${fv(p.cliente)}</div></div>
+    <div class="di"><div class="dl">Exportador</div><div class="dv" style="font-size:12px">${fv(p.cliente)}</div></div>
     <div class="di"><div class="dl">AGEX</div><div class="dv">${fv(p.agex)}</div></div>
     <div class="di"><div class="dl">Ref. Cliente</div><div class="dv">${fv(p.refCli)}</div></div>
     <div class="di"><div class="dl">Serviço</div><div class="dv">${fv(p.servico)}</div></div>
@@ -820,14 +848,14 @@ function openDetail(id) {
     </div>
 
     <div class="dsec">Datas e Prazos</div>
-    <div class="di"><div class="dl">Recebimento</div><div class="dv">${fv(p.recebimento)}</div></div>
-    <div class="di"><div class="dl">Chegada da Carga</div><div class="dv">${fv(p.chegadaCarga)}</div></div>
-    <div class="di"><div class="dl">Registro DUE</div><div class="dv">${fv(p.regDue)}</div></div>
-    <div class="di"><div class="dl">Envio Draft</div><div class="dv">${fv(p.draft)}</div></div>
-    <div class="di"><div class="dl">Deadline Draft</div><div class="dv">${fv(p.deadlineDraft)}</div></div>
-    <div class="di"><div class="dl">Desembaraço</div><div class="dv">${fv(p.desembaraco)}</div></div>
-    <div class="di"><div class="dl">Deadline Carga (Embarque)</div><div class="dv">${fv(p.deadlineCarga)}</div></div>
-    <div class="di"><div class="dl">Envio Faturamento</div><div class="dv">${fv(p.envFaturamento)}</div></div>
+    <div class="di"><div class="dl">Recebimento</div><div class="dv">${fv(dtOf(p,'recebimento'))}</div></div>
+    <div class="di"><div class="dl">Chegada da Carga</div><div class="dv">${fv(dtOf(p,'chegadaCarga'))}</div></div>
+    <div class="di"><div class="dl">Registro DUE</div><div class="dv">${fv(dtOf(p,'regDue'))}</div></div>
+    <div class="di"><div class="dl">Envio Draft</div><div class="dv">${fv(dtOf(p,'draft'))}</div></div>
+    <div class="di"><div class="dl">Deadline Draft</div><div class="dv">${fv(dtOf(p,'deadlineDraft'))}</div></div>
+    <div class="di"><div class="dl">Desembaraço</div><div class="dv">${fv(dtOf(p,'desembaraco'))}</div></div>
+    <div class="di"><div class="dl">Deadline Carga (Embarque)</div><div class="dv">${fv(dtOf(p,'deadlineCarga'))}</div></div>
+    <div class="di"><div class="dl">Envio Faturamento</div><div class="dv">${fv(dtOf(p,'envFaturamento'))}</div></div>
     ${p.obs?`<div class="di full"><div class="dl">Observações</div><div class="dv" style="font-size:12px;line-height:1.5">${p.obs}</div></div>`:''}
   </div>`;
 
@@ -872,17 +900,39 @@ function renderForm(p) {
   const cliOptions = clientes.map(c =>
     `<option value="${c}" ${v('cliente')===c?'selected':''}>${c}</option>`).join('');
 
+  // Para cada campo de evento, separa em Data (dd/mm/aaaa) e Hora (hh:mm).
+  // Se o processo é antigo (formato único "dd/mm/aaaa hh:mm" sem campos
+  // separados), faz a migração automática na hora de abrir o formulário.
+  const dh = campo => {
+    let d = p ? (p[campo + 'Data'] || '') : '';
+    let h = p ? (p[campo + 'Hora'] || '') : '';
+    if (!d && p && p[campo]) {
+      const m = String(p[campo]).trim().match(/^(\d{2}\/\d{2}\/\d{4})(?:\s+(\d{1,2}:\d{2}))?/);
+      if (m) { d = m[1] || ''; h = m[2] || ''; }
+    }
+    return [d, h];
+  };
+  const dtField = (campo, label) => {
+    const [d, h] = dh(campo);
+    return `<div class="fg"><label>${label}</label>
+      <div style="display:flex;gap:6px">
+        <input id="f-${campo}Data" value="${d}" placeholder="dd/mm/aaaa" style="flex:1.3">
+        <input id="f-${campo}Hora" value="${h}" placeholder="hh:mm" style="flex:1">
+      </div>
+    </div>`;
+  };
+
   document.getElementById('m-body').innerHTML = `<div class="fgrid">
     <div class="fsec">Identificação</div>
     <div class="fg"><label>AGEX</label><input id="f-agex" value="${v('agex')}"></div>
     <div class="fg"><label>Ref. Cliente *</label><input id="f-refCli" value="${v('refCli')}"></div>
 
-    <div class="fg full"><label>Cliente</label>
+    <div class="fg full"><label>Exportador</label>
       <div class="ac-wrap">
-        <input id="f-cliente" value="${v('cliente')}" autocomplete="off" placeholder="Digite ou selecione..." oninput="acFilter()" onfocus="acFilter()">
+        <input id="f-cliente" value="${v('cliente')}" autocomplete="off" placeholder="Digite ou selecione..." oninput="acFilter()" onfocus="acFilter(true)">
         <div class="ac-list" id="ac-list">
           ${cliOptions}
-          ${clientes.length?'<div class="ac-item" style="color:var(--g400);font-style:italic" onclick="acClose()">── Digitar novo cliente ──</div>':''}
+          ${clientes.length?'<div class="ac-item" style="color:var(--g400);font-style:italic" onclick="acClose()">── Digitar novo exportador ──</div>':''}
         </div>
       </div>
     </div>
@@ -892,15 +942,15 @@ function renderForm(p) {
     </div>
     <div class="fg"><label>Nº DUE</label><input id="f-due" value="${v('due')}"></div>
 
-    <div class="fsec">Datas e Horários (dd/mm/aaaa hh:mm)</div>
-    <div class="fg"><label>Recebimento</label><input id="f-recebimento" value="${v('recebimento')}" placeholder="dd/mm/aaaa hh:mm"></div>
-    <div class="fg"><label>Chegada da Carga</label><input id="f-chegadaCarga" value="${v('chegadaCarga')}" placeholder="dd/mm/aaaa hh:mm"></div>
-    <div class="fg"><label>Registro DUE</label><input id="f-regDue" value="${v('regDue')}" placeholder="dd/mm/aaaa hh:mm"></div>
-    <div class="fg"><label>Envio Draft</label><input id="f-draft" value="${v('draft')}" placeholder="dd/mm/aaaa hh:mm"></div>
-    <div class="fg"><label>Deadline Draft</label><input id="f-deadlineDraft" value="${v('deadlineDraft')}" placeholder="dd/mm/aaaa hh:mm"></div>
-    <div class="fg"><label>Desembaraço</label><input id="f-desembaraco" value="${v('desembaraco')}" placeholder="dd/mm/aaaa hh:mm"></div>
-    <div class="fg"><label>Deadline Carga (Embarque)</label><input id="f-deadlineCarga" value="${v('deadlineCarga')}" placeholder="dd/mm/aaaa hh:mm"></div>
-    <div class="fg"><label>Envio Faturamento</label><input id="f-envFaturamento" value="${v('envFaturamento')}" placeholder="dd/mm/aaaa hh:mm"></div>
+    <div class="fsec">Datas e Horários</div>
+    ${dtField('recebimento', 'Recebimento')}
+    ${dtField('chegadaCarga', 'Chegada da Carga')}
+    ${dtField('regDue', 'Registro DUE')}
+    ${dtField('draft', 'Envio Draft')}
+    ${dtField('deadlineDraft', 'Deadline Draft')}
+    ${dtField('desembaraco', 'Desembaraço')}
+    ${dtField('deadlineCarga', 'Deadline Carga (Embarque)')}
+    ${dtField('envFaturamento', 'Envio Faturamento')}
 
     ${customCols.length ? `
     <div class="fsec">Campos Personalizados</div>
@@ -924,11 +974,13 @@ function renderForm(p) {
 }
 
 // ── AUTOCOMPLETE (cliente) ──────────────────────────────────────
-function acFilter() {
+function acFilter(forceAll) {
   const input = document.getElementById('f-cliente');
   const list  = document.getElementById('ac-list');
   if (!input || !list) return;
-  const q = input.value.trim();
+  // Ao focar o campo (mesmo já preenchido), mostra a lista completa de
+  // exportadores — só filtra de fato quando o usuário digita algo.
+  const q = forceAll ? '' : input.value.trim();
   const ql = q.toLowerCase();
   const matches = clientes.filter(c => !ql || c.toLowerCase().includes(ql));
   const exactMatch = clientes.some(c => c.toLowerCase() === ql);
@@ -940,7 +992,7 @@ function acFilter() {
   if (q && !exactMatch) {
     html2 += `<div class="ac-item" style="color:var(--blue);font-weight:600;border-top:1px solid var(--g100)"
       onclick="acSelect(document.getElementById('f-cliente').value)">
-      ✚ Usar "<strong>${q}</strong>" como novo cliente</div>`;
+      ✚ Usar "<strong>${q}</strong>" como novo exportador</div>`;
   }
   if (!html2) { list.classList.remove('open'); return; }
   list.innerHTML = html2;
@@ -965,19 +1017,27 @@ function acOutside(e) {
 }
 
 // ── SAVE ────────────────────────────────────────────────────────
+const EVENTOS_DT = ['recebimento','chegadaCarga','regDue','draft','deadlineDraft','desembaraco','deadlineCarga','envFaturamento'];
+
 function saveProc() {
   const rc = document.getElementById('f-refCli').value.trim();
   if (!rc) { alert('Ref. Cliente é obrigatória.'); return; }
 
-  const KEYS = ['agex','refCli','cliente','servico','due',
-    'recebimento','chegadaCarga','regDue','draft','deadlineDraft',
-    'desembaraco','deadlineCarga','envFaturamento','obs'];
-  const IDS  = ['f-agex','f-refCli','f-cliente','f-servico','f-due',
-    'f-recebimento','f-chegadaCarga','f-regDue','f-draft','f-deadlineDraft',
-    'f-desembaraco','f-deadlineCarga','f-envFaturamento','f-obs'];
+  const KEYS = ['agex','refCli','cliente','servico','due','obs'];
+  const IDS  = ['f-agex','f-refCli','f-cliente','f-servico','f-due','f-obs'];
 
   const obj = {};
   KEYS.forEach((k,i) => { const el=document.getElementById(IDS[i]); if(el) obj[k]=el.value.trim(); });
+
+  // Campos de Data + Hora (8 eventos). Salva separados e também limpa
+  // o campo antigo (formato único) para não ficar dado duplicado/desatualizado.
+  EVENTOS_DT.forEach(campo => {
+    const dEl = document.getElementById('f-' + campo + 'Data');
+    const hEl = document.getElementById('f-' + campo + 'Hora');
+    obj[campo + 'Data'] = dEl ? dEl.value.trim() : '';
+    obj[campo + 'Hora'] = hEl ? hEl.value.trim() : '';
+    obj[campo] = ''; // campo antigo não é mais usado depois de salvar pelo formulário novo
+  });
 
   // Campos personalizados (criados via "+ Adicionar Coluna")
   customCols.forEach(cc => {
@@ -1058,10 +1118,10 @@ function renderCadBody() {
   if (cadTab === 'imp') {
     body.innerHTML = `
       <p style="font-size:11px;color:var(--g400);margin-bottom:10px">
-        Cadastre aqui os clientes. Eles aparecerão como sugestão no campo "Cliente" do processo.
+        Cadastre aqui os exportadores. Eles aparecerão como sugestão no campo "Exportador" do processo.
       </p>
       <div class="cad-add-row">
-        <input id="cad-imp-nome" placeholder="Nome do cliente..." onkeydown="if(event.key==='Enter')cadAddImp()">
+        <input id="cad-imp-nome" placeholder="Nome do exportador..." onkeydown="if(event.key==='Enter')cadAddImp()">
         <button class="btn-cad-add" onclick="cadAddImp()">+ Adicionar</button>
       </div>
       <div class="cad-list">
@@ -1069,7 +1129,7 @@ function renderCadBody() {
           <div class="cad-item">
             <div class="cad-item-name">${c}</div>
             <button class="btn-cad-del" onclick="cadDelImp(${i})" title="Remover">×</button>
-          </div>`).join('') : '<div class="cad-empty">Nenhum cliente cadastrado.<br>Adicione acima.</div>'}
+          </div>`).join('') : '<div class="cad-empty">Nenhum exportador cadastrado.<br>Adicione acima.</div>'}
       </div>`;
   } else if (cadTab === 'svc') {
     const servicos = [...new Set(procs.map(p=>p.servico).filter(Boolean))].sort();
@@ -1093,20 +1153,20 @@ function renderCadBody() {
 function cadAddImp() {
   const nomeEl = document.getElementById('cad-imp-nome');
   const nome = (nomeEl.value||'').trim();
-  if (!nome) { nomeEl.focus(); showToast('Informe o nome do cliente.'); return; }
+  if (!nome) { nomeEl.focus(); showToast('Informe o nome do exportador.'); return; }
   if (clientes.some(c => c.toLowerCase() === nome.toLowerCase())) {
-    showToast('⚠ Cliente já cadastrado.');
+    showToast('⚠ Exportador já cadastrado.');
     return;
   }
   addCliente(nome);
   nomeEl.value = '';
   renderCadBody(); populateSelects();
-  showToast('✓ Cliente adicionado!');
+  showToast('✓ Exportador adicionado!');
 }
 function cadDelImp(i) {
   if (!confirm('Remover "' + clientes[i] + '" da lista?')) return;
   clientes.splice(i,1); saveClientes();
-  renderCadBody(); populateSelects(); showToast('Cliente removido.');
+  renderCadBody(); populateSelects(); showToast('Exportador removido.');
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1139,7 +1199,8 @@ function calcStatusFromRules(p) {
   if (p.finalizado) return {key:'fin', label:'FINALIZADO', cls:'st-lib'};
 
   for (const rule of statusRules) {
-    if (p[rule.field] && String(p[rule.field]).trim()) {
+    const val = dtOf(p, rule.field);
+    if (val && String(val).trim()) {
       return {key: rule.field, label: rule.label, cls: rule.cls, attn: rule.attn||false};
     }
   }
@@ -1227,24 +1288,38 @@ const STORAGE_COLS = 'agilexp_cols_v1';
 const ALL_COLS = [
   { id:'agex',       label:'AGEX',               render: p=>`<td style="color:var(--g500);font-size:11px">${p.agex||'—'}</td>` },
   { id:'refCli',     label:'Ref. Cliente',       render: p=>`<td style="font-weight:700;color:var(--navy)">${p.refCli||'—'}</td>` },
-  { id:'cliente',    label:'Cliente',            render: p=>`<td style="max-width:150px;overflow:hidden;text-overflow:ellipsis">${shortCliente(p.cliente)}</td>` },
+  { id:'cliente',    label:'Exportador',         render: p=>`<td style="max-width:150px;overflow:hidden;text-overflow:ellipsis">${shortCliente(p.cliente)}</td>` },
   { id:'servico',    label:'Serviço',            render: p=>`<td style="font-size:11px">${p.servico||'—'}</td>` },
   { id:'status',     label:'Status',             render: p=>`<td>${stHTML(p)}</td>` },
   { id:'due',        label:'DUE',                render: p=>`<td style="color:var(--g500);font-size:11px">${p.due||'—'}</td>` },
-  { id:'recebimento',label:'Recebimento',        render: p=>`<td>${p.recebimento||'—'}</td>` },
-  { id:'chegadaCarga',label:'Chegada Carga',     render: p=>`<td>${p.chegadaCarga||'—'}</td>` },
-  { id:'regDue',     label:'Reg. DUE',           render: p=>`<td>${p.regDue||'—'}</td>` },
-  { id:'draft',      label:'Envio Draft',        render: p=>`<td>${p.draft||'—'}</td>` },
-  { id:'deadlineDraft',label:'Deadline Draft',   render: p=>`<td>${p.deadlineDraft||'—'}</td>` },
-  { id:'desembaraco',label:'Desembaraço',        render: p=>`<td>${p.desembaraco||'—'}</td>` },
-  { id:'deadlineCarga',label:'Deadline Embarque',render: p=>`<td>${p.deadlineCarga||'—'}</td>` },
-  { id:'envFaturamento',label:'Env. Faturamento',render: p=>`<td>${p.envFaturamento||'—'}</td>` },
+
+  { id:'recebimentoData',     label:'Recebimento',           render: p=>`<td>${dOf(p,'recebimento')||'—'}</td>` },
+  { id:'recebimentoHora',     label:'Hora Recebimento',      render: p=>`<td style="color:var(--g500);font-size:11px">${hOf(p,'recebimento')||'—'}</td>` },
+  { id:'chegadaCargaData',    label:'Chegada Carga',         render: p=>`<td>${dOf(p,'chegadaCarga')||'—'}</td>` },
+  { id:'chegadaCargaHora',    label:'Hora Chegada Carga',    render: p=>`<td style="color:var(--g500);font-size:11px">${hOf(p,'chegadaCarga')||'—'}</td>` },
+  { id:'regDueData',          label:'Reg. DUE',              render: p=>`<td>${dOf(p,'regDue')||'—'}</td>` },
+  { id:'regDueHora',          label:'Hora Reg. DUE',         render: p=>`<td style="color:var(--g500);font-size:11px">${hOf(p,'regDue')||'—'}</td>` },
+  { id:'draftData',           label:'Envio Draft',           render: p=>`<td>${dOf(p,'draft')||'—'}</td>` },
+  { id:'draftHora',           label:'Hora Envio Draft',      render: p=>`<td style="color:var(--g500);font-size:11px">${hOf(p,'draft')||'—'}</td>` },
+  { id:'deadlineDraftData',   label:'Deadline Draft',        render: p=>`<td>${dOf(p,'deadlineDraft')||'—'}</td>` },
+  { id:'deadlineDraftHora',   label:'Hora Deadline Draft',   render: p=>`<td style="color:var(--g500);font-size:11px">${hOf(p,'deadlineDraft')||'—'}</td>` },
+  { id:'desembaracoData',     label:'Desembaraço',           render: p=>`<td>${dOf(p,'desembaraco')||'—'}</td>` },
+  { id:'desembaracoHora',     label:'Hora Desembaraço',      render: p=>`<td style="color:var(--g500);font-size:11px">${hOf(p,'desembaraco')||'—'}</td>` },
+  { id:'deadlineCargaData',   label:'Deadline Embarque',     render: p=>`<td>${dOf(p,'deadlineCarga')||'—'}</td>` },
+  { id:'deadlineCargaHora',   label:'Hora Deadline Carga',   render: p=>`<td style="color:var(--g500);font-size:11px">${hOf(p,'deadlineCarga')||'—'}</td>` },
+  { id:'envFaturamentoData',  label:'Env. Faturamento',      render: p=>`<td>${dOf(p,'envFaturamento')||'—'}</td>` },
+  { id:'envFaturamentoHora',  label:'Hora Env. Faturamento', render: p=>`<td style="color:var(--g500);font-size:11px">${hOf(p,'envFaturamento')||'—'}</td>` },
+
   { id:'progresso',  label:'Progresso',          render: p=>`<td>${pgHTML(p)}</td>` },
   { id:'obs',        label:'Observações',        render: p=>`<td style="max-width:160px;font-size:11px;color:var(--g600);white-space:normal;line-height:1.4">${p.obs||''}</td>` },
 ];
 
 const DEFAULT_COL_ORDER = ['refCli','agex','cliente','servico','status','due',
-  'recebimento','chegadaCarga','regDue','draft','deadlineDraft','desembaraco','deadlineCarga','envFaturamento','progresso','obs'];
+  'recebimentoData','recebimentoHora','chegadaCargaData','chegadaCargaHora',
+  'regDueData','regDueHora','draftData','draftHora',
+  'deadlineDraftData','deadlineDraftHora','desembaracoData','desembaracoHora',
+  'deadlineCargaData','deadlineCargaHora','envFaturamentoData','envFaturamentoHora',
+  'progresso','obs'];
 
 let colOrder = [];
 
@@ -1553,7 +1628,7 @@ load(); loadStatusRules(); loadCustomCols(); loadCols(); loadHiddenCols(); popul
     <button class="cad-close" onclick="closeCadastros()">×</button>
   </div>
   <div class="cad-tabs" style="flex-wrap:wrap">
-    <button class="cad-tab active" id="ct-imp" onclick="switchCadTab('imp')">🏢 Clientes</button>
+    <button class="cad-tab active" id="ct-imp" onclick="switchCadTab('imp')">🏢 Exportadores</button>
     <button class="cad-tab" id="ct-svc" onclick="switchCadTab('svc')">🚢 Serviços</button>
     <button class="cad-tab" id="ct-reg" onclick="switchCadTab('reg')">⚙ Regras</button>
     <button class="cad-tab" id="ct-col" onclick="switchCadTab('col')">📋 Colunas</button>
