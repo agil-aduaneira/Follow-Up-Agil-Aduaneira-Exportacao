@@ -565,28 +565,37 @@ function addCliente(nome) {
 // ═══════════════════════════════════════════════════════════════
 function fv(v) { return v || '—'; }
 
+// Normaliza valores "vazios disfarçados" vindos da planilha original
+// (N/A, n/a, -, --) para string vazia de verdade.
+function cleanVal(v) {
+  const s = (v || '').toString().trim();
+  if (!s) return '';
+  if (/^(n\/a|na|-|--)$/i.test(s)) return '';
+  return s;
+}
+
 // Lê um campo de evento (ex: 'recebimento') combinando <campo>Data + <campo>Hora.
 // Mantém compatibilidade com processos antigos que ainda guardam tudo num campo
 // único "dd/mm/aaaa hh:mm" (formato anterior, sem Data/Hora separados).
 function dtOf(p, campo) {
-  const d = (p[campo + 'Data'] || '').trim();
-  const h = (p[campo + 'Hora'] || '').trim();
+  const d = cleanVal(p[campo + 'Data']);
+  const h = cleanVal(p[campo + 'Hora']);
   if (d) return h ? `${d} ${h}` : d;
-  return p[campo] || ''; // fallback formato antigo
+  return cleanVal(p[campo]); // fallback formato antigo
 }
 // Só a Data (para colunas separadas na tabela)
 function dOf(p, campo) {
-  const d = (p[campo + 'Data'] || '').trim();
+  const d = cleanVal(p[campo + 'Data']);
   if (d) return d;
-  const old = (p[campo] || '').trim();
+  const old = cleanVal(p[campo]);
   const m = old.match(/^(\d{2}\/\d{2}\/\d{4})/);
   return m ? m[1] : '';
 }
 // Só a Hora (para colunas separadas na tabela)
 function hOf(p, campo) {
-  const h = (p[campo + 'Hora'] || '').trim();
+  const h = cleanVal(p[campo + 'Hora']);
   if (h) return h;
-  const old = (p[campo] || '').trim();
+  const old = cleanVal(p[campo]);
   const m = old.match(/(\d{1,2}:\d{2})\s*$/);
   return m ? m[1] : '';
 }
