@@ -178,6 +178,24 @@ td:last-child{border-right:none}
 .st-lib  {background:var(--gbg);color:var(--green);font-weight:800}
 @keyframes pulse-amber{0%,100%{opacity:1}50%{opacity:.65}}
 
+/* BADGE N/A DRAFT (não é responsabilidade da Ágil) */
+.draft-na{display:inline-block;background:#F0F0F0;color:#888;border-radius:10px;
+  padding:2px 8px;font-size:10px;font-weight:600;letter-spacing:.02em}
+
+/* TOGGLE RESPONSABILIDADE DRAFT */
+.toggle-wrap{display:flex;align-items:center;gap:8px;margin-top:6px;
+  background:var(--g50);border:1px solid var(--g200);border-radius:var(--r8);
+  padding:8px 12px}
+.toggle-wrap label{font-size:12px;color:var(--g600);cursor:pointer;flex:1}
+.toggle-chk{position:relative;width:34px;height:18px;flex-shrink:0}
+.toggle-chk input{opacity:0;width:0;height:0}
+.toggle-chk .slider{position:absolute;inset:0;background:var(--g200);border-radius:9px;
+  transition:.2s;cursor:pointer}
+.toggle-chk .slider::before{content:'';position:absolute;width:14px;height:14px;
+  left:2px;top:2px;background:#fff;border-radius:50%;transition:.2s}
+.toggle-chk input:checked+.slider{background:var(--amber)}
+.toggle-chk input:checked+.slider::before{transform:translateX(16px)}
+
 /* CANAL */
 .canal{display:inline-flex;align-items:center;border-radius:20px;padding:2px 9px;font-size:10px;font-weight:600}
 .cv{background:var(--gbg);color:var(--green)}
@@ -657,14 +675,15 @@ function stHTML(p) {
 // ═══════════════════════════════════════════════════════════════
 function deadlineCandidates() {
   // Para cada processo ativo, pega o deadline mais urgente ainda não cumprido:
-  // 1) se draft ainda não enviado -> deadlineDraft
+  // 1) se draft ainda não enviado E É responsabilidade da Ágil -> deadlineDraft
   // 2) senão, se não desembaraçado -> deadlineCarga
   const out = [];
   procs.filter(p => !p.finalizado).forEach(p => {
     let label, dtStr, kind;
     const draftDone = dtOf(p,'draft'), deadlineDraftV = dtOf(p,'deadlineDraft');
     const desembDone = dtOf(p,'desembaraco'), deadlineCargaV = dtOf(p,'deadlineCarga');
-    if (!draftDone && deadlineDraftV) {
+    // Só monitora deadline de draft se for responsabilidade da Ágil
+    if (!draftDone && !p.draftNaoAgil && deadlineDraftV) {
       label = 'Draft'; dtStr = deadlineDraftV; kind = 'draft';
     } else if (!desembDone && deadlineCargaV) {
       label = 'Embarque'; dtStr = deadlineCargaV; kind = 'carga';
@@ -745,8 +764,9 @@ function closePanel() {
 function renderKPIs() {
   const all = procs.filter(p => !p.finalizado);
   const fin = procs.filter(p => p.finalizado);
-  const agDraft  = all.filter(p => !dtOf(p,'draft')).length;
-  const agDesemb = all.filter(p => dtOf(p,'draft') && !dtOf(p,'desembaraco')).length;
+  // Ag. Draft: sem draft E é responsabilidade da Ágil (exclui draftNaoAgil)
+  const agDraft  = all.filter(p => !dtOf(p,'draft') && !p.draftNaoAgil).length;
+  const agDesemb = all.filter(p => (dtOf(p,'draft') || p.draftNaoAgil) && !dtOf(p,'desembaraco')).length;
   const candidates = deadlineCandidates();
   const atrasados = candidates.filter(x => x.hours < 0).length;
   document.getElementById('kpis-area').innerHTML = `
@@ -865,12 +885,21 @@ function openDetail(id) {
     <div class="di"><div class="dl">Recebimento</div><div class="dv">${fv(dtOf(p,'recebimento'))}</div></div>
     <div class="di"><div class="dl">Chegada da Carga</div><div class="dv">${fv(dtOf(p,'chegadaCarga'))}</div></div>
     <div class="di"><div class="dl">Registro DUE</div><div class="dv">${fv(dtOf(p,'regDue'))}</div></div>
-    <div class="di"><div class="dl">Envio Draft</div><div class="dv">${fv(dtOf(p,'draft'))}</div></div>
+    <div class="di"><div class="dl">Envio Draft</div><div class="dv">${p.draftNaoAgil ? '<span class="draft-na" title="Não é responsabilidade da Ágil Aduaneira">N/A</span>' : fv(dtOf(p,'draft'))}</div></div>
     <div class="di"><div class="dl">Deadline Draft</div><div class="dv">${fv(dtOf(p,'deadlineDraft'))}</div></div>
     <div class="di"><div class="dl">Desembaraço</div><div class="dv">${fv(dtOf(p,'desembaraco'))}</div></div>
     <div class="di"><div class="dl">Deadline Carga (Embarque)</div><div class="dv">${fv(dtOf(p,'deadlineCarga'))}</div></div>
     <div class="di"><div class="dl">Envio Faturamento</div><div class="dv">${fv(dtOf(p,'envFaturamento'))}</div></div>
     ${p.obs?`<div class="di full"><div class="dl">Observações</div><div class="dv" style="font-size:12px;line-height:1.5">${p.obs}</div></div>`:''}
+
+    ${(p.houveAcaoParceiro || p.valorParceiro || p.outrosPagamentos || p.valoresOutros || p.valorSTA) ? `
+    <div class="dsec">Financeiro / Parceiro</div>
+    <div class="di"><div class="dl">Ação de Parceiro</div><div class="dv">${fv(p.houveAcaoParceiro)}</div></div>
+    ${p.valorParceiro ? `<div class="di"><div class="dl">Valor Parceiro</div><div class="dv">R$ ${Number(p.valorParceiro).toLocaleString('pt-BR',{minimumFractionDigits:2})}</div></div>` : ''}
+    ${p.outrosPagamentos ? `<div class="di full"><div class="dl">Outros Pagamentos</div><div class="dv">${p.outrosPagamentos}</div></div>` : ''}
+    ${p.valoresOutros ? `<div class="di"><div class="dl">Valores</div><div class="dv">R$ ${Number(p.valoresOutros).toLocaleString('pt-BR',{minimumFractionDigits:2})}</div></div>` : ''}
+    ${p.valorSTA ? `<div class="di"><div class="dl">Valor do STA</div><div class="dv">R$ ${Number(p.valorSTA).toLocaleString('pt-BR',{minimumFractionDigits:2})}</div></div>` : ''}
+    ` : ''}
   </div>`;
 
   const finBtn = p.finalizado
@@ -963,11 +992,50 @@ function renderForm(p) {
     ${dtField('recebimento', 'Recebimento')}
     ${dtField('chegadaCarga', 'Chegada da Carga')}
     ${dtField('regDue', 'Registro DUE')}
-    ${dtField('draft', 'Envio Draft')}
+
+    <div class="fg full">
+      <label>Envio Draft</label>
+      <div class="toggle-wrap">
+        <label for="f-draftNaoAgil">N/A — Não é responsabilidade da Ágil Aduaneira</label>
+        <label class="toggle-chk">
+          <input type="checkbox" id="f-draftNaoAgil" ${v('draftNaoAgil') ? 'checked' : ''}
+            onchange="toggleDraftNaoAgil(this.checked)">
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div id="draft-fields" style="${v('draftNaoAgil') ? 'display:none' : ''}">
+        ${dtField('draft', '')}
+      </div>
+    </div>
+
     ${dtField('deadlineDraft', 'Deadline Draft')}
     ${dtField('desembaraco', 'Desembaraço')}
     ${dtField('deadlineCarga', 'Deadline Carga (Embarque)')}
     ${dtField('envFaturamento', 'Envio Faturamento')}
+
+    <div class="fsec">Financeiro / Parceiro</div>
+    <div class="fg full"><label>Houve Ação de Parceiro?</label>
+      <select id="f-houveAcaoParceiro">
+        <option value="" ${!v('houveAcaoParceiro')?'selected':''}>—</option>
+        <option value="Sim" ${v('houveAcaoParceiro')==='Sim'?'selected':''}>Sim</option>
+        <option value="Não" ${v('houveAcaoParceiro')==='Não'?'selected':''}>Não</option>
+      </select>
+    </div>
+    <div class="fg"><label>Se Sim, Qual Valor? (R$)</label>
+      <input id="f-valorParceiro" type="number" step="0.01" min="0"
+        value="${v('valorParceiro')}" placeholder="0,00">
+    </div>
+    <div class="fg full"><label>Outros Pagamentos</label>
+      <input id="f-outrosPagamentos" value="${v('outrosPagamentos')}" placeholder="Descreva se houver">
+    </div>
+    <div class="fg"><label>Valores (R$)</label>
+      <input id="f-valoresOutros" type="number" step="0.01" min="0"
+        value="${v('valoresOutros')}" placeholder="0,00">
+    </div>
+    <div class="fg"><label>Valor do STA (R$)</label>
+      <input id="f-valorSTA" type="number" step="0.01" min="0"
+        value="${v('valorSTA')}" placeholder="0,00">
+    </div>
 
     ${customCols.length ? `
     <div class="fsec">Campos Personalizados</div>
@@ -1020,6 +1088,18 @@ function acSelect(val) {
   if (input) { input.value = val; }
   acClose();
 }
+
+function toggleDraftNaoAgil(checked) {
+  const fields = document.getElementById('draft-fields');
+  if (fields) fields.style.display = checked ? 'none' : '';
+  // limpa os campos de data/hora do draft ao ativar o N/A
+  if (checked) {
+    const dEl = document.getElementById('f-draftData');
+    const hEl = document.getElementById('f-draftHora');
+    if (dEl) dEl.value = '';
+    if (hEl) hEl.value = '';
+  }
+}
 function acClose() {
   const list = document.getElementById('ac-list');
   if (list) list.classList.remove('open');
@@ -1048,14 +1128,27 @@ function saveProc() {
   obj.due      = document.getElementById('f-due').value.trim();
   obj.obs      = document.getElementById('f-obs').value.trim();
 
-  // Campos de Data + Hora (8 eventos). Salva separados e também limpa
-  // o campo antigo (formato único) para não ficar dado duplicado/desatualizado.
+  // Toggle Draft N/A
+  const draftNaoAgil = !!(document.getElementById('f-draftNaoAgil') && document.getElementById('f-draftNaoAgil').checked);
+  obj.draftNaoAgil = draftNaoAgil;
+
+  // Campos de Data + Hora (8 eventos)
   EVENTOS_DT.forEach(campo => {
     const dEl = document.getElementById('f-' + campo + 'Data');
     const hEl = document.getElementById('f-' + campo + 'Hora');
     obj[campo + 'Data'] = dEl ? dEl.value.trim() : '';
     obj[campo + 'Hora'] = hEl ? hEl.value.trim() : '';
-    obj[campo] = ''; // campo antigo não é mais usado depois de salvar pelo formulário novo
+    obj[campo] = '';
+  });
+
+  // Campos financeiros / parceiro
+  ['houveAcaoParceiro','outrosPagamentos'].forEach(k => {
+    const el = document.getElementById('f-' + k);
+    if (el) obj[k] = el.value.trim();
+  });
+  ['valorParceiro','valoresOutros','valorSTA'].forEach(k => {
+    const el = document.getElementById('f-' + k);
+    if (el) obj[k] = el.value.trim();
   });
 
   // Campos personalizados (criados via "+ Adicionar Coluna")
@@ -1214,67 +1307,189 @@ function saveStatusRules() {
   try { localStorage.setItem(STORAGE_RULES, JSON.stringify(statusRules)); } catch(e) {}
 }
 
+// Retorna o valor de um campo para avaliação de regra de status.
+// Campos de data/hora usam dtOf(); demais campos leem direto do objeto.
+const EVENTO_FIELDS = new Set(['envFaturamento','desembaraco','draft','regDue','chegadaCarga','recebimento',
+  'recebimentoData','chegadaCargaData','regDueData','draftData','deadlineDraftData',
+  'desembaracoData','deadlineCargaData','envFaturamentoData']);
+
+function ruleFieldValue(p, field) {
+  if (field === 'draft' && p.draftNaoAgil) return 'NA';
+  if (EVENTO_FIELDS.has(field)) return dtOf(p, field);
+  return (p[field] !== undefined && p[field] !== null) ? String(p[field]).trim() : '';
+}
+
 function calcStatusFromRules(p) {
   if (p.finalizado) return {key:'fin', label:'FINALIZADO', cls:'st-lib'};
-
   for (const rule of statusRules) {
-    const val = dtOf(p, rule.field);
-    if (val && String(val).trim()) {
+    const val = ruleFieldValue(p, rule.field);
+    if (val && val !== '') {
       return {key: rule.field, label: rule.label, cls: rule.cls, attn: rule.attn||false};
     }
   }
   return {key:'novo', label:'NOVO PROCESSO', cls:'st-emb'};
 }
 
-const FIELD_LABELS = {
-  envFaturamento: 'Envio Faturamento',
-  desembaraco:    'Desembaraço',
-  draft:          'Envio Draft',
-  regDue:         'Registro DUE',
-  chegadaCarga:   'Chegada da Carga',
-  recebimento:    'Recebimento',
-};
+// Retorna label legível de um field id para exibição nas regras
+function getFieldLabel(field) {
+  const FIXED = {
+    envFaturamento:'Envio Faturamento', desembaraco:'Desembaraço',
+    draft:'Envio Draft', regDue:'Registro DUE', chegadaCarga:'Chegada da Carga',
+    recebimento:'Recebimento', due:'Nº DUE', agex:'AGEX', cliente:'Exportador',
+    servico:'Serviço', obs:'Observações',
+    houveAcaoParceiro:'Ação de Parceiro', valorParceiro:'Valor Parceiro',
+    outrosPagamentos:'Outros Pagamentos', valoresOutros:'Valores', valorSTA:'Valor do STA',
+  };
+  if (FIXED[field]) return FIXED[field];
+  const cc = customCols.find(c => c.colId === field || c.field === field);
+  if (cc) return cc.label + ' (personalizada)';
+  return field;
+}
 
-const STATUS_LABELS = [
-  'NOVO PROCESSO','AG. CHEGADA DA CARGA','AG. REGISTRO DA DUE','AG. ENVIO DO DRAFT',
-  'AG. DESEMBARAÇO','AG. FATURAMENTO','FATURADO'
+// Paleta de cores disponíveis para regras customizadas
+const RULE_COLORS = [
+  {cls:'st-lib',   hex:'#1B8A5A', name:'Verde'},
+  {cls:'st-icms',  hex:'#0B7A75', name:'Teal'},
+  {cls:'st-espnf', hex:'#5B21B6', name:'Roxo'},
+  {cls:'st-regdi', hex:'#7D3C98', name:'Violeta'},
+  {cls:'st-pres',  hex:'#B85A0E', name:'Laranja'},
+  {cls:'st-cheg',  hex:'#B87A0E', name:'Âmbar'},
+  {cls:'st-emb',   hex:'#1155A3', name:'Azul'},
+  {cls:'st-num',   hex:'#C0392B', name:'Vermelho'},
+  {cls:'st-nf',    hex:'#1B8A5A', name:'Verde claro'},
+  {cls:'st-averb', hex:'#B8860B', name:'Dourado'},
 ];
-const STATUS_CLS = {
-  'NOVO PROCESSO':'st-emb','AG. CHEGADA DA CARGA':'st-cheg','AG. REGISTRO DA DUE':'st-pres',
-  'AG. ENVIO DO DRAFT':'st-regdi','AG. DESEMBARAÇO':'st-espnf','AG. FATURAMENTO':'st-icms',
-  'FATURADO':'st-lib'
-};
+
+// Todos os campos disponíveis para criar uma nova regra
+function getAvailableFields() {
+  const fixed = [
+    {id:'envFaturamento', label:'Envio Faturamento'},
+    {id:'desembaraco',    label:'Desembaraço'},
+    {id:'draft',          label:'Envio Draft'},
+    {id:'regDue',         label:'Registro DUE'},
+    {id:'chegadaCarga',   label:'Chegada da Carga'},
+    {id:'recebimento',    label:'Recebimento'},
+    {id:'due',            label:'Nº DUE'},
+    {id:'agex',           label:'AGEX'},
+    {id:'houveAcaoParceiro', label:'Ação de Parceiro'},
+    {id:'valorParceiro',  label:'Valor Parceiro'},
+    {id:'outrosPagamentos',  label:'Outros Pagamentos'},
+    {id:'valoresOutros',  label:'Valores'},
+    {id:'valorSTA',       label:'Valor do STA'},
+    {id:'obs',            label:'Observações'},
+  ];
+  const custom = customCols.map(cc => ({id: cc.colId, label: cc.label + ' (personalizada)'}));
+  return [...fixed, ...custom];
+}
 
 function renderRulesTab() {
   const body = document.getElementById('cad-body');
+  const fieldsOpts = getAvailableFields().map(f =>
+    `<option value="${f.id}">${f.label}</option>`).join('');
+  const colorSwatches = RULE_COLORS.map((c,i) =>
+    `<label title="${c.name}" style="cursor:pointer">
+      <input type="radio" name="nr-color" value="${c.cls}" ${i===0?'checked':''} style="display:none">
+      <span style="display:inline-block;width:20px;height:20px;border-radius:50%;background:${c.hex};
+        border:2px solid transparent;transition:.15s" onclick="this.style.borderColor='#000'"></span>
+    </label>`).join('');
+
   body.innerHTML = `
-    <p style="font-size:11px;color:var(--g500);margin-bottom:12px;line-height:1.5">
-      Configure aqui qual campo aciona qual status. A ordem importa — a primeira regra com o campo preenchido é aplicada.
+    <p style="font-size:11px;color:var(--g500);margin-bottom:10px;line-height:1.5">
+      Configure qual campo aciona qual status. A ordem importa — a primeira regra com o campo preenchido é aplicada.
     </p>
+
+    <!-- FORMULÁRIO NOVA REGRA -->
+    <div style="background:var(--pale);border:1px solid var(--blue);border-radius:var(--r8);padding:12px;margin-bottom:14px">
+      <div style="font-size:11px;font-weight:700;color:var(--navy);margin-bottom:8px">+ Nova Regra</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div>
+          <div style="font-size:10px;color:var(--g500);margin-bottom:3px">Campo que dispara a regra</div>
+          <select id="nr-field" style="width:100%;height:30px;padding:0 8px;border:1px solid var(--g200);
+            border-radius:var(--r4);font-size:12px;background:#fff;outline:none">
+            ${fieldsOpts}
+          </select>
+        </div>
+        <div>
+          <div style="font-size:10px;color:var(--g500);margin-bottom:3px">Nome do status exibido</div>
+          <input id="nr-label" placeholder="Ex: AGUARDANDO PARCEIRO"
+            style="width:100%;height:30px;padding:0 8px;border:1px solid var(--g200);
+            border-radius:var(--r4);font-size:12px;outline:none;box-sizing:border-box">
+        </div>
+        <div>
+          <div style="font-size:10px;color:var(--g500);margin-bottom:5px">Cor do badge</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap" id="nr-colors">${colorSwatches}</div>
+        </div>
+        <button onclick="addCustomRule()"
+          style="height:32px;background:var(--navy);color:#fff;border:none;border-radius:var(--r8);
+          font-size:12px;font-weight:600;cursor:pointer">+ Adicionar Regra</button>
+      </div>
+    </div>
+
+    <!-- LISTA DE REGRAS -->
     <div style="display:flex;flex-direction:column;gap:8px" id="rules-list">
-      ${statusRules.map((r,i) => `
+      ${statusRules.map((r,i) => {
+        const isDefault = i < DEFAULT_RULES.length && !r.custom;
+        const previewStyle = `display:inline-flex;align-items:center;border-radius:20px;padding:2px 10px;font-size:10px;font-weight:700`;
+        const previewCls = r.cls || 'st-emb';
+        return `
         <div style="background:var(--g50);border:1px solid var(--g200);border-radius:var(--r8);padding:10px 12px">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-            <span style="background:var(--navy);color:rgba(255,255,255,.6);border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0">${i+1}</span>
-            <div style="flex:1;font-size:11px;color:var(--g500)">Quando <strong style="color:var(--navy)">${FIELD_LABELS[r.field]||r.field}</strong> for preenchido:</div>
+            <span style="background:var(--navy);color:rgba(255,255,255,.6);border-radius:50%;width:20px;height:20px;
+              display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0">${i+1}</span>
+            <div style="flex:1;font-size:11px;color:var(--g500)">
+              Quando <strong style="color:var(--navy)">${getFieldLabel(r.field)}</strong> for preenchido:
+            </div>
             <div style="display:flex;gap:4px">
               ${i>0?`<button onclick="ruleMove(${i},-1)" style="width:22px;height:22px;border:1px solid var(--g200);background:#fff;border-radius:var(--r4);font-size:12px;cursor:pointer" title="Subir">↑</button>`:'<span style="width:22px"></span>'}
               ${i<statusRules.length-1?`<button onclick="ruleMove(${i},1)" style="width:22px;height:22px;border:1px solid var(--g200);background:#fff;border-radius:var(--r4);font-size:12px;cursor:pointer" title="Descer">↓</button>`:'<span style="width:22px"></span>'}
-              <button onclick="ruleReset(${i})" style="width:22px;height:22px;border:1px solid var(--g200);background:#fff;border-radius:var(--r4);font-size:10px;cursor:pointer;color:var(--g400)" title="Restaurar padrão">↺</button>
+              ${isDefault
+                ? `<button onclick="ruleReset(${i})" style="width:22px;height:22px;border:1px solid var(--g200);background:#fff;border-radius:var(--r4);font-size:10px;cursor:pointer;color:var(--g400)" title="Restaurar padrão">↺</button>`
+                : `<button onclick="removeCustomRule(${i})" style="width:22px;height:22px;border:1px solid var(--rbg);background:var(--rbg);border-radius:var(--r4);font-size:13px;cursor:pointer;color:var(--red)" title="Excluir regra">×</button>`
+              }
             </div>
           </div>
           <div style="display:flex;align-items:center;gap:8px">
             <span style="font-size:10px;color:var(--g400)">Status →</span>
-            <select onchange="ruleChangeLabel(${i}, this.value)"
-              style="flex:1;height:28px;font-size:11px;font-weight:600;padding:0 6px;border:1px solid var(--g200);border-radius:var(--r4);color:var(--g800);background:#fff;outline:none">
-              ${STATUS_LABELS.map(sl => `<option value="${sl}" ${r.label===sl?'selected':''}>${sl}</option>`).join('')}
-            </select>
+            ${isDefault
+              ? `<select onchange="ruleChangeLabel(${i}, this.value)"
+                  style="flex:1;height:28px;font-size:11px;font-weight:600;padding:0 6px;border:1px solid var(--g200);border-radius:var(--r4);color:var(--g800);background:#fff;outline:none">
+                  ${['NOVO PROCESSO','AG. CHEGADA DA CARGA','AG. REGISTRO DA DUE','AG. ENVIO DO DRAFT',
+                     'AG. DESEMBARAÇO','AG. FATURAMENTO','FATURADO'].map(sl =>
+                    `<option value="${sl}" ${r.label===sl?'selected':''}>${sl}</option>`).join('')}
+                </select>`
+              : `<span class="stb ${previewCls}" style="${previewStyle}">${r.label}</span>
+                 <span style="font-size:10px;color:var(--g400);margin-left:4px">(regra personalizada)</span>`
+            }
           </div>
-        </div>`).join('')}
+        </div>`;
+      }).join('')}
     </div>
     <div style="display:flex;gap:8px;margin-top:12px">
-      <button onclick="rulesReset()" style="flex:1;height:32px;border:1px solid var(--g200);background:#fff;border-radius:var(--r8);font-size:12px;color:var(--g600)">↺ Restaurar padrão</button>
+      <button onclick="rulesReset()" style="flex:1;height:32px;border:1px solid var(--g200);background:#fff;border-radius:var(--r8);font-size:12px;color:var(--g600)">↺ Restaurar padrão (remove regras customizadas)</button>
     </div>`;
+}
+
+function addCustomRule() {
+  const fieldEl = document.getElementById('nr-field');
+  const labelEl = document.getElementById('nr-label');
+  const colorEl = document.querySelector('input[name="nr-color"]:checked');
+  const field = fieldEl ? fieldEl.value : '';
+  const label = (labelEl ? labelEl.value : '').trim().toUpperCase();
+  const cls   = colorEl ? colorEl.value : 'st-emb';
+  if (!field) { showToast('Selecione um campo.'); return; }
+  if (!label) { labelEl.focus(); showToast('Informe o nome do status.'); return; }
+  statusRules.push({ field, label, cls, custom: true });
+  saveStatusRules();
+  if (labelEl) labelEl.value = '';
+  renderRulesTab(); render();
+  showToast('✓ Regra "' + label + '" adicionada!');
+}
+
+function removeCustomRule(i) {
+  if (!confirm('Excluir a regra "' + statusRules[i].label + '"?')) return;
+  statusRules.splice(i, 1);
+  saveStatusRules(); renderRulesTab(); render();
+  showToast('Regra excluída.');
 }
 
 function ruleMove(i, dir) {
@@ -1286,15 +1501,23 @@ function ruleMove(i, dir) {
 }
 function ruleChangeLabel(i, newLabel) {
   statusRules[i].label = newLabel;
-  statusRules[i].cls = STATUS_CLS[newLabel] || 'st-emb';
+  const STATUS_CLS_MAP = {
+    'NOVO PROCESSO':'st-emb','AG. CHEGADA DA CARGA':'st-cheg','AG. REGISTRO DA DUE':'st-pres',
+    'AG. ENVIO DO DRAFT':'st-regdi','AG. DESEMBARAÇO':'st-espnf','AG. FATURAMENTO':'st-icms',
+    'FATURADO':'st-lib'
+  };
+  statusRules[i].cls = STATUS_CLS_MAP[newLabel] || statusRules[i].cls || 'st-emb';
   saveStatusRules(); render();
   showToast('✓ Regra atualizada!');
 }
 function ruleReset(i) {
-  if (DEFAULT_RULES[i]) { statusRules[i] = {...DEFAULT_RULES[i]}; saveStatusRules(); renderRulesTab(); render(); showToast('Regra restaurada.'); }
+  if (i < DEFAULT_RULES.length) {
+    statusRules[i] = {...DEFAULT_RULES[i]};
+    saveStatusRules(); renderRulesTab(); render(); showToast('Regra restaurada.');
+  }
 }
 function rulesReset() {
-  if (!confirm('Restaurar todas as regras para o padrão?')) return;
+  if (!confirm('Restaurar padrão? As regras personalizadas serão removidas.')) return;
   statusRules = JSON.parse(JSON.stringify(DEFAULT_RULES));
   saveStatusRules(); renderRulesTab(); render(); showToast('✓ Regras restauradas.');
 }
@@ -1318,8 +1541,12 @@ const ALL_COLS = [
   { id:'chegadaCargaHora',    label:'Hora Chegada Carga',    render: p=>`<td style="color:var(--g500);font-size:11px">${hOf(p,'chegadaCarga')||'—'}</td>` },
   { id:'regDueData',          label:'Reg. DUE',              render: p=>`<td>${dOf(p,'regDue')||'—'}</td>` },
   { id:'regDueHora',          label:'Hora Reg. DUE',         render: p=>`<td style="color:var(--g500);font-size:11px">${hOf(p,'regDue')||'—'}</td>` },
-  { id:'draftData',           label:'Envio Draft',           render: p=>`<td>${dOf(p,'draft')||'—'}</td>` },
-  { id:'draftHora',           label:'Hora Envio Draft',      render: p=>`<td style="color:var(--g500);font-size:11px">${hOf(p,'draft')||'—'}</td>` },
+  { id:'draftData',           label:'Envio Draft',           render: p=> p.draftNaoAgil
+      ? `<td><span class="draft-na" title="Não é responsabilidade da Ágil">N/A</span></td>`
+      : `<td>${dOf(p,'draft')||'—'}</td>` },
+  { id:'draftHora',           label:'Hora Envio Draft',      render: p=> p.draftNaoAgil
+      ? `<td>—</td>`
+      : `<td style="color:var(--g500);font-size:11px">${hOf(p,'draft')||'—'}</td>` },
   { id:'deadlineDraftData',   label:'Deadline Draft',        render: p=>`<td>${dOf(p,'deadlineDraft')||'—'}</td>` },
   { id:'deadlineDraftHora',   label:'Hora Deadline Draft',   render: p=>`<td style="color:var(--g500);font-size:11px">${hOf(p,'deadlineDraft')||'—'}</td>` },
   { id:'desembaracoData',     label:'Desembaraço',           render: p=>`<td>${dOf(p,'desembaraco')||'—'}</td>` },
@@ -1331,6 +1558,18 @@ const ALL_COLS = [
 
   { id:'progresso',  label:'Progresso',          render: p=>`<td>${pgHTML(p)}</td>` },
   { id:'obs',        label:'Observações',        render: p=>`<td style="max-width:160px;font-size:11px;color:var(--g600);white-space:normal;line-height:1.4">${p.obs||''}</td>` },
+
+  // Colunas financeiras/parceiro
+  { id:'houveAcaoParceiro', label:'Ação de Parceiro', render: p=>{
+      const v = p.houveAcaoParceiro;
+      if (!v || v==='' ) return '<td>—</td>';
+      const cls = v==='Sim' ? 'color:var(--amber);font-weight:700' : 'color:var(--g400)';
+      return `<td style="font-size:11px"><span style="${cls}">${v}</span></td>`;
+    }},
+  { id:'valorParceiro',     label:'Valor Parceiro',    render: p=>`<td style="font-size:11px;text-align:right">${p.valorParceiro ? 'R$ '+Number(p.valorParceiro).toLocaleString('pt-BR',{minimumFractionDigits:2}) : '—'}</td>` },
+  { id:'outrosPagamentos',  label:'Outros Pagamentos', render: p=>`<td style="font-size:11px;max-width:140px;white-space:normal">${p.outrosPagamentos||'—'}</td>` },
+  { id:'valoresOutros',     label:'Valores',           render: p=>`<td style="font-size:11px;text-align:right">${p.valoresOutros ? 'R$ '+Number(p.valoresOutros).toLocaleString('pt-BR',{minimumFractionDigits:2}) : '—'}</td>` },
+  { id:'valorSTA',          label:'Valor do STA',      render: p=>`<td style="font-size:11px;text-align:right">${p.valorSTA ? 'R$ '+Number(p.valorSTA).toLocaleString('pt-BR',{minimumFractionDigits:2}) : '—'}</td>` },
 ];
 
 const DEFAULT_COL_ORDER = ['refCli','agex','cliente','servico','status','due',
@@ -1338,7 +1577,8 @@ const DEFAULT_COL_ORDER = ['refCli','agex','cliente','servico','status','due',
   'regDueData','regDueHora','draftData','draftHora',
   'deadlineDraftData','deadlineDraftHora','desembaracoData','desembaracoHora',
   'deadlineCargaData','deadlineCargaHora','envFaturamentoData','envFaturamentoHora',
-  'progresso','obs'];
+  'progresso','obs',
+  'houveAcaoParceiro','valorParceiro','outrosPagamentos','valoresOutros','valorSTA'];
 
 let colOrder = [];
 
