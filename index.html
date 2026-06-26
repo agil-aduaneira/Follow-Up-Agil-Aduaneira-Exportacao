@@ -251,7 +251,7 @@ button{cursor:pointer}
 
 /* TABLE */
 .tcard{background:#fff;border:1px solid var(--g200);border-radius:var(--r12);box-shadow:var(--sh1)}
-.tscroll{overflow:auto;border-radius:var(--r12);max-height:calc(100vh - 400px)}
+.tscroll{overflow-x:auto;overflow-y:auto;border-radius:var(--r12);max-height:calc(100vh - 380px)}
 table{width:100%;border-collapse:collapse;font-size:12px}
 thead th{background:var(--navy);padding:9px 12px;text-align:left;font-size:10px;font-weight:600;
   color:rgba(255,255,255,.72);text-transform:uppercase;letter-spacing:.04em;
@@ -2128,7 +2128,7 @@ const ALL_COLS = [
   { id:'dataFaturamentoData',   label:'Faturamento',          render: p=>`<td>${dOf(p,'dataFaturamento')||'—'}</td>` },
 
   { id:'progresso',  label:'Progresso',          render: p=>`<td>${pgHTML(p)}</td>` },
-  { id:'obs',        label:'Observações',        render: p=>`<td style="max-width:160px;font-size:11px;color:var(--g600);white-space:normal;line-height:1.4">${p.obs||''}</td>` },
+  { id:'obs',        label:'Observações',        render: p=>`<td style="max-width:180px;font-size:11px;color:var(--g600);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.obs||''}</td>` },
 
   { id:'houveAcaoParceiro', label:'Ação Parceiro', render: p=>{
       const vv=p.houveAcaoParceiro;
@@ -2137,7 +2137,7 @@ const ALL_COLS = [
       return `<td style="font-size:11px"><span style="${cls}">${vv}</span></td>`;
     }},
   { id:'valorParceiro',     label:'Valor Parceiro',    render: p=>`<td style="font-size:11px;text-align:right">${p.valorParceiro?'R$ '+Number(p.valorParceiro).toLocaleString('pt-BR',{minimumFractionDigits:2}):'—'}</td>` },
-  { id:'outrosPagamentos',  label:'Outros Pagamentos', render: p=>`<td style="font-size:11px;max-width:140px;white-space:normal">${p.outrosPagamentos||'—'}</td>` },
+  { id:'outrosPagamentos',  label:'Outros Pagamentos', render: p=>`<td style="font-size:11px;max-width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.outrosPagamentos||'—'}</td>` },
   { id:'valoresOutros',     label:'Valores',           render: p=>`<td style="font-size:11px;text-align:right">${p.valoresOutros?'R$ '+Number(p.valoresOutros).toLocaleString('pt-BR',{minimumFractionDigits:2}):'—'}</td>` },
   { id:'valorSTA',          label:'Valor do STA',      render: p=>`<td style="font-size:11px;text-align:right">${p.valorSTA?'R$ '+Number(p.valorSTA).toLocaleString('pt-BR',{minimumFractionDigits:2}):'—'}</td>` },
 ];
