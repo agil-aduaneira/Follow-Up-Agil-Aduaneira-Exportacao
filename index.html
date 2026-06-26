@@ -305,12 +305,12 @@ td:last-child{border-right:none}
 /* TOGGLE */
 .toggle-wrap{display:flex;align-items:center;gap:8px;margin-top:6px;
   background:var(--g50);border:1px solid var(--g200);border-radius:var(--r8);padding:5px 10px}
-.toggle-wrap label{font-size:11px;color:var(--g600);cursor:pointer;flex:1}
-.toggle-chk{position:relative;width:22px;height:12px;flex-shrink:0}
-.toggle-chk input{opacity:0;width:0;height:0}
-.toggle-chk .slider{position:absolute;inset:0;background:var(--g200);border-radius:6px;transition:.2s;cursor:pointer}
+.toggle-wrap-txt{font-size:11px;color:var(--g600);flex:1;cursor:default}
+.toggle-chk{position:relative;width:22px;height:12px;flex-shrink:0;display:inline-block}
+.toggle-chk input{opacity:0;position:absolute;width:0;height:0}
+.toggle-chk .slider{position:absolute;top:0;left:0;right:0;bottom:0;background:var(--g200);border-radius:6px;transition:.2s;cursor:pointer}
 .toggle-chk .slider::before{content:'';position:absolute;width:8px;height:8px;
-  left:2px;top:2px;background:#fff;border-radius:50%;transition:.2s}
+  left:2px;top:2px;background:#fff;border-radius:50%;transition:.2s;pointer-events:none}
 .toggle-chk input:checked+.slider{background:var(--amber)}
 .toggle-chk input:checked+.slider::before{transform:translateX(10px)}
 
@@ -1457,7 +1457,7 @@ function renderForm(p) {
     <div class="fg full">
       <label>Envio Draft</label>
       <div class="toggle-wrap">
-        <label for="f-draftNaoAgil">N/A — Não é responsabilidade da Ágil Aduaneira</label>
+        <span class="toggle-wrap-txt">N/A — Não é responsabilidade da Ágil Aduaneira</span>
         <label class="toggle-chk">
           <input type="checkbox" id="f-draftNaoAgil" ${v('draftNaoAgil')?'checked':''}
             onchange="toggleDraftNaoAgil(this.checked)">
