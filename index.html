@@ -286,6 +286,12 @@ tbody tr:hover{background:var(--pale)}
 td{padding:9px 12px;white-space:nowrap;vertical-align:middle;border-right:1px solid var(--g100)}
 td:last-child{border-right:none}
 
+/* Congela a 1ª coluna (REF. CLIENTE) ao rolar a tabela horizontalmente */
+thead th:first-child{position:sticky;left:0;z-index:51}
+tbody td:first-child{position:sticky;left:0;z-index:1;background:#fff;
+  box-shadow:2px 0 4px rgba(11,35,85,.06)}
+tbody tr:hover td:first-child{background:var(--pale)}
+
 /* WORKFLOW STEP BADGE — principal badge de status */
 .wf-step{display:inline-flex;align-items:center;gap:5px;border-radius:20px;padding:3px 10px;
   font-size:10px;font-weight:700;white-space:nowrap;letter-spacing:.02em}
