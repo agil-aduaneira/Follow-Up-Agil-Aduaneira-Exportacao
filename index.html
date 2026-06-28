@@ -269,12 +269,7 @@ button{cursor:pointer}
 
 /* TABLE */
 .tcard{background:#fff;border:1px solid var(--g200);border-radius:var(--r12);box-shadow:var(--sh1)}
-/* overflow-x:auto força overflow-y a virar "auto" também (regra do próprio CSS:
-   se um eixo não é "visible", o outro também passa a ser "auto"). Por isso a altura
-   máxima é calculada via JS (função ajustarAlturaTabela) em vez de um valor fixo de
-   CSS — garante que a tabela sempre caiba na tela e nunca force a página a rolar,
-   o que faria o cabeçalho (sticky relativo a esta caixa) sair da tela junto. */
-.tscroll{overflow-x:auto;overflow-y:auto;border-radius:var(--r12)}
+.tscroll{overflow:auto;border-radius:var(--r12);max-height:calc(100vh - 380px)}
 table{width:100%;border-collapse:collapse;font-size:12px}
 thead th{background:var(--navy);padding:9px 12px;text-align:left;font-size:10px;font-weight:600;
   color:rgba(255,255,255,.72);text-transform:uppercase;letter-spacing:.04em;
@@ -1290,14 +1285,9 @@ function render() {
 
   const tbody = document.getElementById('tbody');
   const empty = document.getElementById('empty');
-  if (!list.length) {
-    tbody.innerHTML=''; empty.style.display='';
-    ajustarAlturaTabela();
-    return;
-  }
+  if (!list.length) { tbody.innerHTML=''; empty.style.display=''; return; }
   empty.style.display = 'none';
   tbody.innerHTML = list.map(p => `<tr onclick="openDetail(${p.id})">${renderRow(p)}</tr>`).join('');
-  ajustarAlturaTabela();
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -2447,23 +2437,6 @@ function buildColMgrRows() {
   }
   return rows;
 }
-
-// Calcula, via JS, a altura máxima exata que a tabela pode ocupar sem nunca
-// forçar a página a rolar — mede a posição real do topo de .tscroll na tela
-// (em vez de um valor fixo "calc(100vh - Npx)" que fica desatualizado se o
-// conteúdo acima — alertas/KPIs — mudar de altura).
-function ajustarAlturaTabela() {
-  const el = document.querySelector('.tscroll');
-  if (!el) return;
-  // getBoundingClientRect().top é relativo à JANELA VISÍVEL (muda com a rolagem!).
-  // Somamos window.scrollY pra obter a posição real no DOCUMENTO (estável, não
-  // muda conforme rola) — sem isso, cada re-render no meio de uma rolagem
-  // recalculava errado e a tabela "subia" mais um pouco a cada vez.
-  const topNoDocumento = el.getBoundingClientRect().top + window.scrollY;
-  const altura = Math.max(160, window.innerHeight - topNoDocumento - 24);
-  el.style.maxHeight = altura + 'px';
-}
-window.addEventListener('resize', ajustarAlturaTabela);
 
 // ═══════════════════════════════════════════════════════════════
 //  INIT
