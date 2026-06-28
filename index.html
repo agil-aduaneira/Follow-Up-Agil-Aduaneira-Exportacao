@@ -2455,8 +2455,12 @@ function buildColMgrRows() {
 function ajustarAlturaTabela() {
   const el = document.querySelector('.tscroll');
   if (!el) return;
-  const top = el.getBoundingClientRect().top;
-  const altura = Math.max(160, window.innerHeight - top - 24);
+  // getBoundingClientRect().top é relativo à JANELA VISÍVEL (muda com a rolagem!).
+  // Somamos window.scrollY pra obter a posição real no DOCUMENTO (estável, não
+  // muda conforme rola) — sem isso, cada re-render no meio de uma rolagem
+  // recalculava errado e a tabela "subia" mais um pouco a cada vez.
+  const topNoDocumento = el.getBoundingClientRect().top + window.scrollY;
+  const altura = Math.max(160, window.innerHeight - topNoDocumento - 24);
   el.style.maxHeight = altura + 'px';
 }
 window.addEventListener('resize', ajustarAlturaTabela);
