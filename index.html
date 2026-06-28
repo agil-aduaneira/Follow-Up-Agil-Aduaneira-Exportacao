@@ -2295,8 +2295,7 @@ function renderThead() {
   tr.innerHTML = getActiveCols().map((col,i) =>
     `<th draggable="true" data-col="${col.id}"
       ondragstart="colDragStart(event)" ondragover="colDragOver(event)"
-      ondragleave="colDragLeave(event)" ondrop="colDrop(event)" ondragend="colDragEnd(event)"
-      style="position:relative">
+      ondragleave="colDragLeave(event)" ondrop="colDrop(event)" ondragend="colDragEnd(event)">
       <span class="drag-handle" title="Arraste para reordenar">⠿</span>
       <span class="col-label">${col.label}</span>
     </th>`
