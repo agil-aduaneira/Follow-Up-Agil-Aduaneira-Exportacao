@@ -1,0 +1,12 @@
+# Repositório público (GitHub Pages) — só publicamos o site (HTML).
+# Documentação interna, planilhas, manuais e versões antigas NÃO sobem.
+Index/
+*.xlsx
+*.docx
+*.pdf
+*.zip
+*.rules
+*.gs
+*.md
+Thumbs.db
+.claude/
