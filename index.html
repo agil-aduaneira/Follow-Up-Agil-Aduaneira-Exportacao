@@ -269,12 +269,16 @@ button{cursor:pointer}
 
 /* TABLE */
 .tcard{background:#fff;border:1px solid var(--g200);border-radius:var(--r12);box-shadow:var(--sh1)}
-.tscroll{overflow-x:auto;overflow-y:auto;border-radius:var(--r12);max-height:calc(100vh - 380px)}
+/* overflow-y fica "visible" (em vez de auto+max-height) porque, com poucas linhas,
+   a tabela nunca cria barra de rolagem própria — é a página que rola, e o cabeçalho
+   precisa ficar fixo relativo à PÁGINA (abaixo do header azul + abas), não à caixinha
+   da tabela. overflow-x continua "auto" pra rolagem horizontal das colunas. */
+.tscroll{overflow-x:auto;overflow-y:visible;border-radius:var(--r12)}
 table{width:100%;border-collapse:collapse;font-size:12px}
 thead th{background:var(--navy);padding:9px 12px;text-align:left;font-size:10px;font-weight:600;
   color:rgba(255,255,255,.72);text-transform:uppercase;letter-spacing:.04em;
   border-right:1px solid rgba(255,255,255,.06);white-space:nowrap;
-  position:sticky;top:0;z-index:50;box-shadow:0 2px 6px rgba(11,35,85,.18)}
+  position:sticky;top:106px;z-index:50;box-shadow:0 2px 6px rgba(11,35,85,.18)}
 thead th:last-child{border-right:none}
 thead tr:first-child th:first-child{border-top-left-radius:var(--r12)}
 thead tr:first-child th:last-child{border-top-right-radius:var(--r12)}
