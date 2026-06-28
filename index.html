@@ -214,9 +214,10 @@ button{cursor:pointer}
 .hdr-module{font-size:13px;font-weight:500;color:rgba(255,255,255,.85)}
 .hdr-date{font-size:11px;color:rgba(255,255,255,.45)}
 
-/* TABBAR */
+/* TABBAR — congelada logo abaixo do header (.hdr tem 62px de altura) */
 .tabbar{background:#fff;border-bottom:1px solid var(--g200);padding:0 1.5rem;
-  display:flex;align-items:center;gap:0;box-shadow:var(--sh1)}
+  display:flex;align-items:center;gap:0;box-shadow:var(--sh1);
+  position:sticky;top:62px;z-index:59}
 .tab{height:44px;padding:0 18px;font-size:13px;font-weight:500;color:var(--g500);
   border:none;background:none;border-bottom:2px solid transparent;
   display:flex;align-items:center;gap:6px;white-space:nowrap;transition:all .15s}
