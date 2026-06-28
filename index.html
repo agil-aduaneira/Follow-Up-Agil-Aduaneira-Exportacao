@@ -44,14 +44,6 @@ window._isAdmin = () => window._rbac.isAdmin;
 window._isFinanceiro = () => window._rbac.perfil === 'financeiro';
 window._getUID  = () => window._rbac.uid;
 
-// Verifica se o processo já tem "Envio p/ Faturamento" preenchido
-// (duplica a lógica simples de dtOf() pois este script é module isolado)
-window._fnHasEnvFaturamento = p => {
-  const d = (p.envFaturamentoData || '').toString().trim();
-  const legacy = (p.envFaturamento || '').toString().trim();
-  return !!(d || legacy);
-};
-
 // ─── Operações Firestore expostas para JS não-module ─────────
 window._fbSignOut    = () => signOut(auth).then(() => { window.location.href = "login.html"; });
 window._fbSaveProc   = p   => setDoc(doc(db, "processos", String(p.id)), p);
@@ -144,28 +136,25 @@ async function carregarPerfil(user) {
   const fAnalista = document.getElementById('f-analista');
   if (fAnalista) fAnalista.style.display = window._rbac.isAdmin ? '' : 'none';
 
-  // Listener de processos — admin vê todos, analista só os seus, financeiro só os enviados p/ faturamento
-  onSnapshot(collection(db, "processos"), snap => {
+  // Listener de processos — admin vê todos, analista só os seus, financeiro só os enviados p/ faturamento.
+  // IMPORTANTE: o Firestore nega a consulta inteira quando a regra de segurança depende de um
+  // campo do documento (analistaUID / envFaturamentoData) que a query não restringe via where() —
+  // por isso usamos query+where específico por perfil, em vez de ouvir a coleção inteira sem filtro
+  // e filtrar só no cliente (que funciona pro Admin, mas é negado pro Analista/Financeiro).
+  const processosQuery = window._rbac.isAdmin
+    ? collection(db, "processos")
+    : window._rbac.perfil === 'financeiro'
+    ? query(collection(db, "processos"), where("envFaturamentoData", ">", ""))
+    : query(collection(db, "processos"), where("analistaUID", "==", window._rbac.uid));
+
+  onSnapshot(processosQuery, snap => {
     const fsProcs = [];
-    snap.forEach(d => {
-      const p = d.data();
-      // Filtro de visibilidade por perfil
-      if (window._rbac.isAdmin) {
-        fsProcs.push(p);
-      } else if (window._rbac.perfil === 'financeiro') {
-        // Financeiro: vê apenas processos com Envio p/ Faturamento já preenchido
-        if (window._fnHasEnvFaturamento && window._fnHasEnvFaturamento(p)) fsProcs.push(p);
-      } else {
-        // Analista: vê apenas processos atribuídos a ele
-        if (p.analistaUID === window._rbac.uid) fsProcs.push(p);
-        // Processos sem analista atribuído: só admin vê
-      }
-    });
+    snap.forEach(d => fsProcs.push(d.data()));
     fsProcs.sort((a, b) => (a.id || 0) - (b.id || 0));
     procs = fsProcs;
     if (procs.length) nextId = Math.max(...procs.map(p => p.id || 0)) + 1;
     populateSelects(); renderThead(); render();
-  });
+  }, err => console.error('Erro ao carregar processos:', err));
 
   // Listener de usuários — todos os perfis carregam (necessário para selects
   // de Analista Responsável, filtro por analista e painel de Cadastros)
