@@ -2286,7 +2286,7 @@ async function saveExpConfig(nome, containerEl) {
           saveBtn.style.background = 'var(--navy)';
         }, 2500);
       }
-      showToast('✓ Procedimento de "'+nome+'" salvo no Firestore!');
+      showToast('✓ Procedimento de "'+nome+'" salvo com sucesso!');
     } catch(e) {
       if (saveBtn) {
         saveBtn.disabled = false;
