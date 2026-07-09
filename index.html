@@ -2150,6 +2150,20 @@ const DEFAULT_EXP_CONFIGS = {
     camposExtras: [],
     _nome:'PARAIPABA',
   },
+  'EBBA': {
+    tiposServico: ['Exportação Marítima'],
+    etapas: { campoNavioTransito:true, envioVGM:true, carregamento:true, desembaraco:true, certificados:true },
+    camposExtras: [
+      { id:'ext_ebba_receb_prazo',   label:'Prazo: Recebimento NF/CNTR',  tipo:'prazo',  etapa:'draft',        eventoRef:'deadlineDraft',    horas:-24 },
+      { id:'ext_ebba_due_prazo',     label:'Prazo: Emissão DUE/Draft',    tipo:'prazo',  etapa:'draft',        eventoRef:'deadlineDraft',    horas:-12 },
+      { id:'ext_ebba_vgm_prazo',     label:'Prazo: Envio Draft/VGM',      tipo:'prazo',  etapa:'draft',        eventoRef:'deadlineDraft',    horas:-4  },
+      { id:'ext_ebba_chegada_prazo', label:'Prazo: Chegada da Carga',      tipo:'prazo',  etapa:'carregamento', eventoRef:'dataCarregamento', horas:6   },
+      { id:'ext_ebba_co_prazo',      label:'Prazo: CO/Form A',             tipo:'prazo',  etapa:'certificados', eventoRef:'desembaraco',      horas:24  },
+      { id:'ext_ebba_envio_docs',    label:'Envio de Documentos',          tipo:'simNao', etapa:'averbacao'                                            },
+      { id:'ext_ebba_docs_prazo',    label:'Prazo: Envio de Documentos',   tipo:'prazo',  etapa:'averbacao',    eventoRef:'dataSaidaNavio',   horas:48  },
+    ],
+    _nome:'EBBA',
+  },
 };
 
 function getExpConfig(nome) {
@@ -2250,7 +2264,7 @@ function renderExpConfigPanel(nome, panelEl) {
                 <label>Evento:</label>
                 <select class="ecfg-cp-eventoRef ecfg-sel" style="flex:2">${eventoOpts}</select>
                 <label>+</label>
-                <input type="number" class="ecfg-cp-horas ecfg-inp ecfg-prazo-horas" value="${c.horas||24}" min="1">
+                <input type="number" class="ecfg-cp-horas ecfg-inp ecfg-prazo-horas" value="${c.horas!=null?c.horas:24}" title="Use negativo para 'X horas antes do evento'">
                 <label>horas</label>
               </div>
             </div>`;}).join('')}
@@ -2315,7 +2329,7 @@ function ecfgAddCampo(btn) {
       <label>Evento:</label>
       <select class="ecfg-cp-eventoRef ecfg-sel" style="flex:2">${eventoOpts}</select>
       <label>+</label>
-      <input type="number" class="ecfg-cp-horas ecfg-inp ecfg-prazo-horas" value="24" min="1">
+      <input type="number" class="ecfg-cp-horas ecfg-inp ecfg-prazo-horas" value="24" title="Use negativo para 'X horas antes do evento'">
       <label>horas</label>
     </div>`;
   list.appendChild(row);
@@ -2446,7 +2460,8 @@ function renderExtCamposDetail(p) {
   if (!p.extCampos || !Object.keys(p.extCampos).length) return '';
   const cfg = getExpConfig(p.cliente);
   if (!cfg || !cfg.camposExtras || !cfg.camposExtras.length) return '';
-  const campos = cfg.camposExtras.filter(c => p.extCampos[c.id]);
+  const extCampos = p.extCampos || {};
+  const campos = cfg.camposExtras.filter(c => c.tipo === 'prazo' || extCampos[c.id]);
   if (!campos.length) return '';
   return `<div class="dsec">Campos do Cliente</div>` +
     campos.map(c=>{
@@ -2469,7 +2484,7 @@ function renderExtCamposDetail(p) {
         }
         return `<div class="di full"><div class="dl">${c.label}</div><div class="dv" style="color:${cor};font-weight:600">${icone} ${txt}</div></div>`;
       }
-      return `<div class="di"><div class="dl">${c.label}</div><div class="dv">${p.extCampos[c.id]||'—'}</div></div>`;
+      return `<div class="di"><div class="dl">${c.label}</div><div class="dv">${extCampos[c.id]||'—'}</div></div>`;
     }).join('');
 }
 
