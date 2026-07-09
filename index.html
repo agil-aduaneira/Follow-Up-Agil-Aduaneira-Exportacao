@@ -237,7 +237,10 @@ button{cursor:pointer}
 .ecfg-sec-lbl{font-size:10px;font-weight:700;color:var(--g500);text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px}
 .ecfg-check-lbl{display:flex;align-items:center;gap:6px;margin-bottom:4px;cursor:pointer;font-size:11px;color:var(--g700)}
 .ecfg-campos-list{display:flex;flex-direction:column;gap:4px;margin-bottom:6px}
-.ecfg-campo-row{display:flex;gap:4px;align-items:center}
+.ecfg-campo-row{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+.ecfg-prazo-extras{display:none;flex-basis:100%;gap:6px;align-items:center;padding:3px 0 2px;margin-top:2px;flex-wrap:wrap}
+.ecfg-prazo-extras label{font-size:10px;color:var(--g500);white-space:nowrap}
+.ecfg-prazo-horas{width:58px!important;flex:none!important}
 .ecfg-inp{flex:2;height:26px;padding:0 6px;border:1px solid var(--g200);border-radius:var(--r4);font-size:11px;outline:none;color:var(--g800);min-width:0}
 .ecfg-sel{height:26px;padding:0 4px;border:1px solid var(--g200);border-radius:var(--r4);font-size:11px;background:#fff;outline:none;flex:1;min-width:0}
 .ecfg-del-btn{width:22px;height:22px;border:1px solid var(--rbg);background:var(--rbg);border-radius:var(--r4);font-size:13px;cursor:pointer;color:var(--red);flex-shrink:0}
@@ -1140,6 +1143,35 @@ function alertaFinalizacaoPendente(p) {
   return { dataRefStr: formatDateTime(deadline), diffMin, urgencia };
 }
 
+function alertasPrazoCalculado(p) {
+  const cfg = getExpConfig(p.cliente);
+  if (!cfg || !cfg.camposExtras) return [];
+  const out = [];
+  cfg.camposExtras.filter(c => c.tipo === 'prazo').forEach(c => {
+    const refStr = dtOf(p, c.eventoRef);
+    if (!refStr) return;
+    const refDt = parseDateTime(refStr);
+    if (!refDt) return;
+    const deadline = new Date(refDt.getTime() + (c.horas||24) * 3600000);
+    const diffMin = (deadline - new Date()) / 60000;
+    let urgencia;
+    if (diffMin < 0) urgencia = 'atrasado';
+    else if (diffMin <= 24 * 60) urgencia = 'hoje';
+    else urgencia = 'normal';
+    out.push({
+      wf: {
+        stepId: 'prazo_' + c.id,
+        nome: c.label,
+        cls: urgencia === 'atrasado' ? 'wf-due' : 'wf-nf-cont',
+        icone: '⏱',
+        alerta: { dataRefStr: formatDateTime(deadline), diffMin, urgencia },
+      },
+      hours: diffMin / 60,
+    });
+  });
+  return out;
+}
+
 function wfAlertCandidates() {
   const out = [];
   procs.filter(p => !p.finalizado).forEach(p => {
@@ -1151,6 +1183,8 @@ function wfAlertCandidates() {
       const wfFin = { stepId: 'fin_pendente', nome: 'Finalizar após Faturamento', cls: 'wf-fatur', icone: '⏰', alerta: alertaFin };
       out.push({ p, wf: wfFin, hours: alertaFin.diffMin / 60 });
     }
+
+    alertasPrazoCalculado(p).forEach(item => out.push({ p, ...item }));
   });
   out.sort((a,b) => a.hours - b.hours);
   return out;
@@ -2196,20 +2230,30 @@ function renderExpConfigPanel(nome, panelEl) {
       <div style="margin-bottom:10px">
         <div class="ecfg-sec-lbl">Campos extras do cliente</div>
         <div class="ecfg-campos-list">
-          ${camposExtras.map(c=>`
-            <div class="ecfg-campo-row" data-id="${c.id}">
+          ${camposExtras.map(c=>{
+            const isPrazo = c.tipo==='prazo';
+            const eventoOpts = PRAZO_EVENTO_OPTS.map(([v,l])=>`<option value="${v}"${c.eventoRef===v?' selected':''}>${l}</option>`).join('');
+            return `<div class="ecfg-campo-row" data-id="${c.id}">
               <input value="${c.label}" placeholder="Label" class="ecfg-cp-label ecfg-inp">
-              <select class="ecfg-cp-tipo ecfg-sel">
+              <select class="ecfg-cp-tipo ecfg-sel" onchange="ecfgTipoChange(this)">
                 <option value="texto"  ${c.tipo==='texto' ?'selected':''}>Texto</option>
                 <option value="data"   ${c.tipo==='data'  ?'selected':''}>Data</option>
                 <option value="simNao" ${c.tipo==='simNao'?'selected':''}>Sim/Não</option>
                 <option value="numero" ${c.tipo==='numero'?'selected':''}>Número</option>
+                <option value="prazo"  ${isPrazo          ?'selected':''}>Prazo calculado</option>
               </select>
               <select class="ecfg-cp-etapa ecfg-sel">
                 ${etapaOpts.replace(`value="${c.etapa}"`,`value="${c.etapa}" selected`)}
               </select>
               <button onclick="this.closest('.ecfg-campo-row').remove()" class="ecfg-del-btn">×</button>
-            </div>`).join('')}
+              <div class="ecfg-prazo-extras" style="display:${isPrazo?'flex':'none'}">
+                <label>Evento:</label>
+                <select class="ecfg-cp-eventoRef ecfg-sel" style="flex:2">${eventoOpts}</select>
+                <label>+</label>
+                <input type="number" class="ecfg-cp-horas ecfg-inp ecfg-prazo-horas" value="${c.horas||24}" min="1">
+                <label>horas</label>
+              </div>
+            </div>`;}).join('')}
         </div>
         <button onclick="ecfgAddCampo(this)" class="ecfg-add-btn">+ Adicionar campo extra</button>
       </div>
@@ -2225,6 +2269,28 @@ function renderExpConfigPanel(nome, panelEl) {
   if (saveBtn) saveBtn.onclick = () => saveExpConfig(nome, panelEl.firstElementChild);
 }
 
+const PRAZO_EVENTO_OPTS = [
+  ['recebimento',      'Recebimento'],
+  ['chegadaCarga',     'Chegada da Carga'],
+  ['regDue',           'Registro da DUE'],
+  ['draft',            'Envio do Draft'],
+  ['deadlineDraft',    'Deadline Draft'],
+  ['dataCarregamento', 'Data de Carregamento'],
+  ['chegadaTerminal',  'Chegada ao Terminal'],
+  ['desembaraco',      'Ag. Desembaraço'],
+  ['deadlineCarga',    'Deadline da Carga'],
+  ['dataCertificados', 'Data dos Certificados'],
+  ['dataAverbacao',    'Averbação / Docs'],
+  ['dataSaidaNavio',   'Saída do Navio'],
+  ['envFaturamento',   'Envio p/ Faturamento'],
+];
+
+function ecfgTipoChange(sel) {
+  const row = sel.closest('.ecfg-campo-row');
+  const extras = row.querySelector('.ecfg-prazo-extras');
+  if (extras) extras.style.display = sel.value === 'prazo' ? 'flex' : 'none';
+}
+
 function ecfgAddCampo(btn) {
   const list = btn.previousElementSibling;
   const etapaOpts = [
@@ -2235,14 +2301,23 @@ function ecfgAddCampo(btn) {
   const row = document.createElement('div');
   row.className = 'ecfg-campo-row';
   row.dataset.id = '';
+  const eventoOpts = PRAZO_EVENTO_OPTS.map(([v,l])=>`<option value="${v}">${l}</option>`).join('');
   row.innerHTML = `
     <input placeholder="Label do campo" class="ecfg-cp-label ecfg-inp">
-    <select class="ecfg-cp-tipo ecfg-sel">
+    <select class="ecfg-cp-tipo ecfg-sel" onchange="ecfgTipoChange(this)">
       <option value="texto">Texto</option><option value="data">Data</option>
       <option value="simNao">Sim/Não</option><option value="numero">Número</option>
+      <option value="prazo">Prazo calculado</option>
     </select>
     <select class="ecfg-cp-etapa ecfg-sel">${etapaOpts}</select>
-    <button onclick="this.closest('.ecfg-campo-row').remove()" class="ecfg-del-btn">×</button>`;
+    <button onclick="this.closest('.ecfg-campo-row').remove()" class="ecfg-del-btn">×</button>
+    <div class="ecfg-prazo-extras" style="display:none">
+      <label>Evento:</label>
+      <select class="ecfg-cp-eventoRef ecfg-sel" style="flex:2">${eventoOpts}</select>
+      <label>+</label>
+      <input type="number" class="ecfg-cp-horas ecfg-inp ecfg-prazo-horas" value="24" min="1">
+      <label>horas</label>
+    </div>`;
   list.appendChild(row);
 }
 
@@ -2258,7 +2333,13 @@ async function saveExpConfig(nome, containerEl) {
                       .replace(/[^a-z0-9]/g,'_').replace(/__+/g,'_').replace(/^_|_$/g,'');
     const id = existingId || ('ext_'+slug);
     row.dataset.id = id;
-    return { id, label, tipo:row.querySelector('.ecfg-cp-tipo').value, etapa:row.querySelector('.ecfg-cp-etapa').value };
+    const tipo = row.querySelector('.ecfg-cp-tipo').value;
+    const etapa = row.querySelector('.ecfg-cp-etapa').value;
+    const extra = tipo === 'prazo' ? {
+      eventoRef: row.querySelector('.ecfg-cp-eventoRef')?.value || 'recebimento',
+      horas: parseInt(row.querySelector('.ecfg-cp-horas')?.value || '24') || 24,
+    } : {};
+    return { id, label, tipo, etapa, ...extra };
   }).filter(Boolean);
   const cfg = { tiposServico, etapas, camposExtras, _nome:nome };
 
@@ -2336,6 +2417,7 @@ function applyExpConfig(nome) {
   obsField.parentNode.insertBefore(hdr, obsField);
 
   cfg.camposExtras.forEach(c => {
+    if (c.tipo === 'prazo') return; // calculado automaticamente, não editável no form
     const val = extCampos[c.id] || '';
     let inputHtml;
     if (c.tipo === 'simNao') {
@@ -2367,7 +2449,28 @@ function renderExtCamposDetail(p) {
   const campos = cfg.camposExtras.filter(c => p.extCampos[c.id]);
   if (!campos.length) return '';
   return `<div class="dsec">Campos do Cliente</div>` +
-    campos.map(c=>`<div class="di"><div class="dl">${c.label}</div><div class="dv">${p.extCampos[c.id]||'—'}</div></div>`).join('');
+    campos.map(c=>{
+      if (c.tipo === 'prazo') {
+        const eventoLabel = (PRAZO_EVENTO_OPTS.find(([v])=>v===c.eventoRef)||['',''])[1] || c.eventoRef;
+        const refStr = dtOf(p, c.eventoRef);
+        if (!refStr) return `<div class="di"><div class="dl">${c.label}</div><div class="dv" style="color:var(--g400)">Aguardando ${eventoLabel}</div></div>`;
+        const refDt = parseDateTime(refStr);
+        if (!refDt) return '';
+        const deadline = new Date(refDt.getTime() + (c.horas||24) * 3600000);
+        const diffMin = (deadline - new Date()) / 60000;
+        let cor, icone, txt;
+        if (diffMin < 0) {
+          const diasAtraso = Math.abs(Math.round(diffMin/60/24)) || 1;
+          cor='var(--red)'; icone='🔴'; txt=`VENCIDO — ${diasAtraso}d atraso (limite: ${formatDateTime(deadline)})`;
+        } else if (diffMin <= 24*60) {
+          cor='#B87A0E'; icone='🟡'; txt=`HOJE — ${formatDateTime(deadline)}`;
+        } else {
+          cor='var(--green)'; icone='🟢'; txt=formatDateTime(deadline);
+        }
+        return `<div class="di full"><div class="dl">${c.label}</div><div class="dv" style="color:${cor};font-weight:600">${icone} ${txt}</div></div>`;
+      }
+      return `<div class="di"><div class="dl">${c.label}</div><div class="dv">${p.extCampos[c.id]||'—'}</div></div>`;
+    }).join('');
 }
 
 // ═══════════════════════════════════════════════════════════════
