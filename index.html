@@ -65,6 +65,10 @@ window._fbTransferExportador = async (nomeExportador, novoAnalistaUID, novoAnali
   await batch.commit();
 };
 
+// ── Salvar configuração de workflow por exportador ──────────
+window._fbSaveExpConfig = (nome, cfg) =>
+  setDoc(doc(db, 'exportadores_config', nome.replace(/[^a-zA-Z0-9]/g,'_')), cfg);
+
 // Criar usuário via Firebase Auth (apenas Admin pode chamar)
 window._fbCreateUser = async (email, senha, nome, perfil) => {
   // Cria uma segunda instância temporária para não deslogar o admin
@@ -168,6 +172,19 @@ async function carregarPerfil(user) {
       renderCadBody();
     }
   });
+
+  // Listener de configurações de workflow por exportador
+  onSnapshot(collection(db, 'exportadores_config'), snap => {
+    window._exportadoresConfig = {};
+    snap.forEach(d => {
+      const data = d.data();
+      if (data._nome) window._exportadoresConfig[data._nome] = data;
+    });
+    const cp = document.getElementById('cad-panel');
+    if (cp && cp.classList.contains('open') && typeof window.renderCadBody === 'function') {
+      window.renderCadBody();
+    }
+  }, () => {}); // silencia erros de permissão caso a regra ainda não exista
 }
 
 onAuthStateChanged(auth, user => {
@@ -215,6 +232,17 @@ button{cursor:pointer}
 .badge{background:var(--g100);color:var(--g500);border-radius:20px;font-size:10px;font-weight:600;padding:1px 7px}
 .tab.active .badge{background:var(--pale);color:var(--blue)}
 .tab-fin .badge{background:var(--gbg);color:var(--green)}
+
+/* CONFIG PANEL DE WORKFLOW POR EXPORTADOR */
+.ecfg-sec-lbl{font-size:10px;font-weight:700;color:var(--g500);text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px}
+.ecfg-check-lbl{display:flex;align-items:center;gap:6px;margin-bottom:4px;cursor:pointer;font-size:11px;color:var(--g700)}
+.ecfg-campos-list{display:flex;flex-direction:column;gap:4px;margin-bottom:6px}
+.ecfg-campo-row{display:flex;gap:4px;align-items:center}
+.ecfg-inp{flex:2;height:26px;padding:0 6px;border:1px solid var(--g200);border-radius:var(--r4);font-size:11px;outline:none;color:var(--g800);min-width:0}
+.ecfg-sel{height:26px;padding:0 4px;border:1px solid var(--g200);border-radius:var(--r4);font-size:11px;background:#fff;outline:none;flex:1;min-width:0}
+.ecfg-del-btn{width:22px;height:22px;border:1px solid var(--rbg);background:var(--rbg);border-radius:var(--r4);font-size:13px;cursor:pointer;color:var(--red);flex-shrink:0}
+.ecfg-add-btn{height:26px;padding:0 10px;border:1px dashed var(--g300);background:#fff;border-radius:var(--r4);font-size:11px;cursor:pointer;color:var(--g500);width:100%}
+.ecfg-add-btn:hover{border-color:var(--blue);color:var(--blue)}
 
 /* MAIN */
 .main{padding:1.25rem 1.5rem 3rem;max-width:1800px;margin:0 auto}
@@ -1382,6 +1410,8 @@ function openDetail(id) {
     <div class="di"><div class="dl">Faturamento Realizado</div><div class="dv">${fv(dtOf(p,'dataFaturamento'))}</div></div>
     ${p.obs?`<div class="di full"><div class="dl">Observações</div><div class="dv" style="font-size:12px;line-height:1.5">${p.obs}</div></div>`:''}
 
+    ${renderExtCamposDetail(p)}
+
     ${(p.houveAcaoParceiro||p.valorParceiro||p.outrosPagamentos||p.valorSTA)?`
     <div class="dsec">Financeiro / Parceiro</div>
     <div class="di"><div class="dl">Ação de Parceiro</div><div class="dv">${fv(p.houveAcaoParceiro)}</div></div>
@@ -1546,7 +1576,7 @@ function renderForm(p) {
     </div>
 
     <div class="fg"><label>Nº DUE</label><input id="f-due" value="${v('due')}"></div>
-    <div class="fg"><label>Tipo de Navio</label>
+    <div class="fg" id="form-field-tipoNavio"><label>Tipo de Navio</label>
       <select id="f-tipoNavio">
         <option value="" ${!v('tipoNavio')?'selected':''}>— Selecione —</option>
         <option value="Direto" ${v('tipoNavio')==='Direto'?'selected':''}>Direto (averbação 7 dias)</option>
@@ -1572,8 +1602,8 @@ function renderForm(p) {
     ${dtField('chegadaCarga', 'Chegada da Carga / NF', p)}
     ${dtField('regDue', 'Registro DUE', p)}
 
-    <div class="fg full">
-      <label>Envio Draft</label>
+    <div class="fg full" id="form-field-envioVGM">
+      <label>Envio Draft / VGM</label>
       <div class="toggle-wrap">
         <span class="toggle-wrap-txt">N/A — Não é responsabilidade da Ágil Aduaneira</span>
         <label class="toggle-chk">
@@ -1589,22 +1619,26 @@ function renderForm(p) {
 
     ${dtField('deadlineDraft', 'Deadline Draft', p)}
 
-    <div class="fsec">Etapa 5–7 · Carregamento → Desembaraço</div>
-    ${dtField('dataCarregamento', 'Data de Carregamento', p)}
-    ${dtField('chegadaTerminal', 'Chegada ao Terminal', p)}
+    <div class="fsec">Etapa 5–7 · Desembaraço</div>
+    <div id="form-sec-carregamento" style="display:contents">
+      ${dtField('dataCarregamento', 'Data de Carregamento', p)}
+      ${dtField('chegadaTerminal', 'Chegada ao Terminal', p)}
+    </div>
     ${dtField('desembaraco', 'Desembaraço', p)}
     ${dtField('deadlineCarga', 'Deadline Carga (Embarque)', p)}
 
-    <div class="fsec">Etapa 8–10 · Certificados → Documentos</div>
-    ${dtField('dataCertificados', 'Certificados (CO/FORM A)', p)}
-    ${dtField('dataAverbacao', 'Averbação', p)}
-    ${dtField('dataSaidaNavio', 'Data de Saída do Navio', p)}
-    <div class="fg"><label>Documentos Enviados</label>
-      <select id="f-documentosEnviados">
-        <option value="" ${!v('documentosEnviados')?'selected':''}>—</option>
-        <option value="Sim" ${v('documentosEnviados')==='Sim'?'selected':''}>Sim</option>
-        <option value="Não" ${v('documentosEnviados')==='Não'?'selected':''}>Não</option>
-      </select>
+    <div id="form-sec-certificados" style="display:contents">
+      <div class="fsec">Etapa 8–10 · Certificados → Documentos</div>
+      ${dtField('dataCertificados', 'Certificados (CO/FORM A)', p)}
+      ${dtField('dataAverbacao', 'Averbação', p)}
+      ${dtField('dataSaidaNavio', 'Data de Saída do Navio', p)}
+      <div class="fg"><label>Documentos Enviados</label>
+        <select id="f-documentosEnviados">
+          <option value="" ${!v('documentosEnviados')?'selected':''}>—</option>
+          <option value="Sim" ${v('documentosEnviados')==='Sim'?'selected':''}>Sim</option>
+          <option value="Não" ${v('documentosEnviados')==='Não'?'selected':''}>Não</option>
+        </select>
+      </div>
     </div>
 
     <div class="fsec">Etapa 11–12 · Faturamento</div>
@@ -1637,18 +1671,19 @@ function renderForm(p) {
       return `<div class="fg"><label>${cc.label}</label><input id="f-${cc.colId}" type="${inputType}" value="${v(cc.field)}" placeholder="${placeholder}"></div>`;
     }).join('')}` : ''}
 
-    <div class="fg full"><label>Observações</label><textarea id="f-obs">${v('obs')}</textarea></div>
+    <div class="fg full" id="form-field-obs"><label>Observações</label><textarea id="f-obs">${v('obs')}</textarea></div>
   </div>`;
 
   document.getElementById('m-foot').innerHTML =
     `<button class="btn-sec" onclick="closeModal()">Cancelar</button>
      <button class="btn-save" onclick="saveProc()">💾 Salvar processo</button>`;
 
-  // Aplicar máscaras em todos os campos de data e hora
+  // Aplicar máscaras e config do exportador
   setTimeout(() => {
     document.querySelectorAll('#m-body input[placeholder="dd/mm/aaaa"]').forEach(applyDateMask);
     document.querySelectorAll('#m-body input[placeholder="hh:mm"]').forEach(applyTimeMask);
     document.addEventListener('click', acOutside);
+    applyExpConfig(v('cliente'));
   }, 50);
 }
 
@@ -1679,6 +1714,7 @@ function acSelect(val) {
   const input = document.getElementById('f-form-cliente');
   if (input) input.value = val;
   acClose();
+  applyExpConfig(val);
 }
 function toggleDraftNaoAgil(checked) {
   const fields = document.getElementById('draft-fields');
@@ -1756,6 +1792,18 @@ function saveProc() {
   customCols.forEach(cc => {
     const el = document.getElementById('f-'+cc.colId); if(el) obj[cc.field]=el.value.trim();
   });
+
+  // Campos extras do exportador (configurados em Cadastros → Exportadores → ⚙ Workflow)
+  const clienteNome = obj.cliente || (editingId ? (procs.find(x=>x.id===editingId)||{}).cliente : '');
+  const expCfg = getExpConfig(clienteNome);
+  if (expCfg && expCfg.camposExtras && expCfg.camposExtras.length) {
+    const prev = editingId ? ((procs.find(x=>x.id===editingId)||{}).extCampos||{}) : {};
+    obj.extCampos = { ...prev };
+    expCfg.camposExtras.forEach(c => {
+      const el = document.getElementById('fext-'+c.id);
+      if (el) obj.extCampos[c.id] = el.value.trim();
+    });
+  }
 
   if (obj.cliente) addCliente(obj.cliente.trim());
 
@@ -1864,12 +1912,19 @@ function renderCadBody() {
           return `<div class="cad-item" style="flex-direction:column;align-items:flex-start;gap:6px">
             <div style="display:flex;align-items:center;justify-content:space-between;width:100%">
               <div class="cad-item-name">${c}</div>
-              ${window._isAdmin() ? `<button class="btn-cad-del" onclick="cadDelImp(${i})" title="Remover">×</button>` : ''}
+              <div style="display:flex;gap:4px;align-items:center">
+                ${window._isAdmin() ? `<button onclick="toggleExpConfigPanel('${c.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}', this)"
+                  style="height:24px;padding:0 8px;border:1px solid var(--blue);background:var(--pale);
+                  border-radius:var(--r4);font-size:10px;font-weight:600;cursor:pointer;color:var(--blue)">
+                  ⚙ Workflow</button>` : ''}
+                ${window._isAdmin() ? `<button class="btn-cad-del" onclick="cadDelImp(${i})" title="Remover">×</button>` : ''}
+              </div>
             </div>
             <div style="display:flex;align-items:center;gap:8px">
               <span style="font-size:10px;color:var(--g400);font-weight:600">ANALISTA:</span>
               ${analistaOpts2}
             </div>
+            <div class="exp-cfg-panel" style="display:none;width:100%"></div>
           </div>`;
         }).join('') : '<div class="cad-empty">Nenhum exportador cadastrado.<br>Adicione acima.</div>'}
       </div>`;
@@ -2036,6 +2091,254 @@ function cadDelImp(i) {
   if (!confirm('Remover "' + clientes[i] + '" da lista?')) return;
   clientes.splice(i,1); saveClientes();
   renderCadBody(); populateSelects(); showToast('Exportador removido.');
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  CONFIGURAÇÃO DE WORKFLOW POR EXPORTADOR
+// ═══════════════════════════════════════════════════════════════
+
+// Configs padrão pré-carregadas (ativas antes de salvar no Firestore)
+const DEFAULT_EXP_CONFIGS = {
+  'USIBRAS': {
+    tiposServico: ['Exportação Marítima','Exportação Aérea','Ficta'],
+    etapas: { campoNavioTransito:true, envioVGM:true, carregamento:true, desembaraco:true, certificados:true },
+    camposExtras: [
+      { id:'ext_n_lpco',        label:'N° LPCO',       tipo:'texto',  etapa:'certificados' },
+      { id:'ext_data_vistoria', label:'Data Vistória',  tipo:'data',   etapa:'certificados' },
+      { id:'ext_n_fito',        label:'N° Fito',        tipo:'texto',  etapa:'certificados' },
+      { id:'ext_fito_emitido',  label:'Fito Emitido',   tipo:'simNao', etapa:'certificados' },
+    ],
+    _nome:'USIBRAS',
+  },
+  'PARAIPABA': {
+    tiposServico: ['Exportação Marítima'],
+    etapas: { campoNavioTransito:true, envioVGM:false, carregamento:false, desembaraco:true, certificados:true },
+    camposExtras: [],
+    _nome:'PARAIPABA',
+  },
+};
+
+function getExpConfig(nome) {
+  if (!nome) return null;
+  return (window._exportadoresConfig||{})[nome] || DEFAULT_EXP_CONFIGS[nome] || null;
+}
+
+function toggleExpConfigPanel(nome, btn) {
+  const item = btn.closest('.cad-item');
+  if (!item) return;
+  const panel = item.querySelector('.exp-cfg-panel');
+  if (!panel) return;
+  const isOpen = panel.style.display !== 'none';
+  if (isOpen) {
+    panel.style.display = 'none';
+    btn.innerHTML = '⚙ Workflow';
+    btn.style.background = 'var(--pale)';
+    btn.style.borderColor = 'var(--blue)';
+    btn.style.color = 'var(--blue)';
+    return;
+  }
+  panel.style.display = 'block';
+  btn.innerHTML = '✕ Fechar';
+  btn.style.background = 'var(--rbg)';
+  btn.style.borderColor = 'var(--red)';
+  btn.style.color = 'var(--red)';
+  renderExpConfigPanel(nome, panel);
+}
+
+function renderExpConfigPanel(nome, panelEl) {
+  const cfg = getExpConfig(nome) || {};
+  const tiposDisponiveis = ['Exportação Marítima','Exportação Aérea','Ficta'];
+  const tiposAtivos = cfg.tiposServico || ['Exportação Marítima'];
+  const etapasConfig = cfg.etapas || {};
+  const etapas = {
+    campoNavioTransito: etapasConfig.campoNavioTransito !== false,
+    envioVGM:           etapasConfig.envioVGM           !== false,
+    carregamento:       etapasConfig.carregamento        !== false,
+    desembaraco:        etapasConfig.desembaraco         !== false,
+    certificados:       etapasConfig.certificados        !== false,
+  };
+  const camposExtras = cfg.camposExtras || [];
+  const etapaOpts = [
+    ['identificacao','Identificação'],['draft','Recebimento / DUE'],
+    ['carregamento','Carregamento'],['certificados','Certificados'],
+    ['averbacao','Averbação / Docs'],['faturamento','Faturamento'],
+  ].map(([v,l])=>`<option value="${v}">${l}</option>`).join('');
+
+  const nomeEsc = nome.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+  panelEl.innerHTML = `
+    <div style="background:var(--pale);border:1px solid var(--blue);border-radius:var(--r8);padding:12px;font-size:11px;margin-top:4px">
+      <div style="font-size:12px;font-weight:700;color:var(--navy);margin-bottom:10px">⚙ Workflow — ${nome}</div>
+
+      <div style="margin-bottom:12px">
+        <div class="ecfg-sec-lbl">Tipos de Serviço disponíveis</div>
+        ${tiposDisponiveis.map(t=>`
+          <label class="ecfg-check-lbl">
+            <input type="checkbox" class="ecfg-tipo" value="${t}" ${tiposAtivos.includes(t)?'checked':''}>
+            <span>${t}${t==='Ficta'?'<span style="font-size:9px;color:var(--g400);font-style:italic"> — workflow simplificado (receb. + DUE + prazo)</span>':''}</span>
+          </label>`).join('')}
+      </div>
+
+      <div style="margin-bottom:12px">
+        <div class="ecfg-sec-lbl">Etapas / Campos ativos</div>
+        ${[
+          ['campoNavioTransito','Campo Tipo de Navio (Direto / Com Trânsito)'],
+          ['envioVGM','Envio Draft / VGM'],
+          ['carregamento','Data de Carregamento e Chegada ao Terminal'],
+          ['desembaraco','Ag. Desembaraço'],
+          ['certificados','Seção de Certificados'],
+        ].map(([k,lbl])=>`
+          <label class="ecfg-check-lbl">
+            <input type="checkbox" class="ecfg-etapa" data-key="${k}" ${etapas[k]?'checked':''}>
+            <span>${lbl}</span>
+          </label>`).join('')}
+      </div>
+
+      <div style="margin-bottom:10px">
+        <div class="ecfg-sec-lbl">Campos extras do cliente</div>
+        <div class="ecfg-campos-list">
+          ${camposExtras.map(c=>`
+            <div class="ecfg-campo-row" data-id="${c.id}">
+              <input value="${c.label}" placeholder="Label" class="ecfg-cp-label ecfg-inp">
+              <select class="ecfg-cp-tipo ecfg-sel">
+                <option value="texto"  ${c.tipo==='texto' ?'selected':''}>Texto</option>
+                <option value="data"   ${c.tipo==='data'  ?'selected':''}>Data</option>
+                <option value="simNao" ${c.tipo==='simNao'?'selected':''}>Sim/Não</option>
+                <option value="numero" ${c.tipo==='numero'?'selected':''}>Número</option>
+              </select>
+              <select class="ecfg-cp-etapa ecfg-sel">
+                ${etapaOpts.replace(`value="${c.etapa}"`,`value="${c.etapa}" selected`)}
+              </select>
+              <button onclick="this.closest('.ecfg-campo-row').remove()" class="ecfg-del-btn">×</button>
+            </div>`).join('')}
+        </div>
+        <button onclick="ecfgAddCampo(this)" class="ecfg-add-btn">+ Adicionar campo extra</button>
+      </div>
+
+      <button onclick="saveExpConfig('${nomeEsc}', this.closest('.exp-cfg-panel').querySelector('[style*=pale]') || this.parentElement)"
+        style="width:100%;height:32px;background:var(--navy);color:#fff;border:none;border-radius:var(--r8);font-size:12px;font-weight:600;cursor:pointer">
+        💾 Salvar configuração
+      </button>
+    </div>`;
+
+  // Ajusta o onclick do botão salvar para capturar o div correto
+  const saveBtn = panelEl.querySelector('button[style*="navy"]');
+  if (saveBtn) saveBtn.onclick = () => saveExpConfig(nome, panelEl.firstElementChild);
+}
+
+function ecfgAddCampo(btn) {
+  const list = btn.previousElementSibling;
+  const etapaOpts = [
+    ['identificacao','Identificação'],['draft','Recebimento / DUE'],
+    ['carregamento','Carregamento'],['certificados','Certificados'],
+    ['averbacao','Averbação / Docs'],['faturamento','Faturamento'],
+  ].map(([v,l])=>`<option value="${v}">${l}</option>`).join('');
+  const row = document.createElement('div');
+  row.className = 'ecfg-campo-row';
+  row.dataset.id = '';
+  row.innerHTML = `
+    <input placeholder="Label do campo" class="ecfg-cp-label ecfg-inp">
+    <select class="ecfg-cp-tipo ecfg-sel">
+      <option value="texto">Texto</option><option value="data">Data</option>
+      <option value="simNao">Sim/Não</option><option value="numero">Número</option>
+    </select>
+    <select class="ecfg-cp-etapa ecfg-sel">${etapaOpts}</select>
+    <button onclick="this.closest('.ecfg-campo-row').remove()" class="ecfg-del-btn">×</button>`;
+  list.appendChild(row);
+}
+
+async function saveExpConfig(nome, containerEl) {
+  const tiposServico = [...containerEl.querySelectorAll('.ecfg-tipo:checked')].map(el=>el.value);
+  const etapas = {};
+  containerEl.querySelectorAll('.ecfg-etapa').forEach(el=>{ etapas[el.dataset.key]=el.checked; });
+  const camposExtras = [...containerEl.querySelectorAll('.ecfg-campo-row')].map(row=>{
+    const label = (row.querySelector('.ecfg-cp-label').value||'').trim();
+    if (!label) return null;
+    const existingId = row.dataset.id;
+    const slug = label.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'')
+                      .replace(/[^a-z0-9]/g,'_').replace(/__+/g,'_').replace(/^_|_$/g,'');
+    const id = existingId || ('ext_'+slug);
+    row.dataset.id = id;
+    return { id, label, tipo:row.querySelector('.ecfg-cp-tipo').value, etapa:row.querySelector('.ecfg-cp-etapa').value };
+  }).filter(Boolean);
+  const cfg = { tiposServico, etapas, camposExtras, _nome:nome };
+  if (typeof window._fbSaveExpConfig === 'function') {
+    await window._fbSaveExpConfig(nome, cfg);
+    if (!window._exportadoresConfig) window._exportadoresConfig = {};
+    window._exportadoresConfig[nome] = cfg;
+    showToast('✓ Configuração de "'+nome+'" salva!');
+  }
+}
+
+// Aplica a config do exportador ao formulário de processo (show/hide campos + injeta extras)
+function applyExpConfig(nome) {
+  if (!nome) return;
+  const cfg = getExpConfig(nome);
+
+  // 1. Filtrar tipos de serviço no select
+  const svcSel = document.getElementById('f-form-servico');
+  if (svcSel && cfg && cfg.tiposServico && cfg.tiposServico.length) {
+    const current = svcSel.value;
+    const mapa = {'Exportação Marítima':'Exportação Marítima','Exportação Aérea':'Exportação Aérea','Ficta':'Exportação Ficta'};
+    svcSel.innerHTML = cfg.tiposServico.map(t=>`<option value="${mapa[t]||t}">${mapa[t]||t}</option>`).join('');
+    if ([...svcSel.options].some(o=>o.value===current)) svcSel.value=current;
+  }
+
+  // 2. Mostrar/ocultar etapas
+  if (cfg && cfg.etapas) {
+    const s = (id, vis, dc) => { const el=document.getElementById(id); if(el) el.style.display=vis?(dc||''):'none'; };
+    s('form-field-tipoNavio', cfg.etapas.campoNavioTransito !== false);
+    s('form-field-envioVGM',  cfg.etapas.envioVGM           !== false);
+    s('form-sec-carregamento',cfg.etapas.carregamento        !== false, 'contents');
+    s('form-sec-certificados',cfg.etapas.certificados        !== false, 'contents');
+  }
+
+  // 3. Campos extras: remove os anteriores e injeta os do exportador atual
+  document.querySelectorAll('.form-extra-campo').forEach(el=>el.remove());
+  const obsField = document.getElementById('form-field-obs');
+  if (!cfg || !cfg.camposExtras || !cfg.camposExtras.length || !obsField) return;
+
+  const p = editingId ? (procs.find(x=>x.id===editingId)||{}) : {};
+  const extCampos = p.extCampos || {};
+
+  const hdr = document.createElement('div');
+  hdr.className = 'fsec form-extra-campo';
+  hdr.style.gridColumn = '1/-1';
+  hdr.textContent = 'Campos do Cliente';
+  obsField.parentNode.insertBefore(hdr, obsField);
+
+  cfg.camposExtras.forEach(c => {
+    const val = extCampos[c.id] || '';
+    let inputHtml;
+    if (c.tipo === 'simNao') {
+      inputHtml = `<select id="fext-${c.id}" style="height:34px;padding:0 10px;border:1px solid var(--g200);border-radius:var(--r8);font-size:12px;outline:none;background:#fff;width:100%">
+        <option value="" ${!val?'selected':''}>—</option>
+        <option value="Sim" ${val==='Sim'?'selected':''}>Sim</option>
+        <option value="Não" ${val==='Não'?'selected':''}>Não</option></select>`;
+    } else if (c.tipo === 'data') {
+      inputHtml = `<input id="fext-${c.id}" value="${val}" placeholder="dd/mm/aaaa" maxlength="10" inputmode="numeric">`;
+    } else {
+      inputHtml = `<input id="fext-${c.id}" value="${val}" type="${c.tipo==='numero'?'number':'text'}">`;
+    }
+    const div = document.createElement('div');
+    div.className = 'fg form-extra-campo';
+    div.innerHTML = `<label>${c.label}</label>${inputHtml}`;
+    obsField.parentNode.insertBefore(div, obsField);
+    if (c.tipo === 'data') {
+      const el = document.getElementById('fext-'+c.id);
+      if (el && typeof applyDateMask === 'function') applyDateMask(el);
+    }
+  });
+}
+
+// Renderiza campos extras no modal de visualização (openDetail)
+function renderExtCamposDetail(p) {
+  if (!p.extCampos || !Object.keys(p.extCampos).length) return '';
+  const cfg = getExpConfig(p.cliente);
+  if (!cfg || !cfg.camposExtras || !cfg.camposExtras.length) return '';
+  const campos = cfg.camposExtras.filter(c => p.extCampos[c.id]);
+  if (!campos.length) return '';
+  return `<div class="dsec">Campos do Cliente</div>` +
+    campos.map(c=>`<div class="di"><div class="dl">${c.label}</div><div class="dv">${p.extCampos[c.id]||'—'}</div></div>`).join('');
 }
 
 // ═══════════════════════════════════════════════════════════════
