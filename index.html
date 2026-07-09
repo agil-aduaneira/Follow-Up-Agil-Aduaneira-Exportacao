@@ -1174,7 +1174,7 @@ function alertasPrazoCalculado(p) {
 
 function wfAlertCandidates() {
   const out = [];
-  procs.filter(p => !p.finalizado).forEach(p => {
+  filteredForDashboard().filter(p => !p.finalizado).forEach(p => {
     const wf = wfProcess(p);
     if (wf.alerta) out.push({ p, wf, hours: wf.alerta.diffMin / 60 });
 
@@ -1262,24 +1262,33 @@ function closePanel() {
 //  KPIs alimentados pelo Workflow Engine
 // ═══════════════════════════════════════════════════════════════
 function renderKPIs() {
-  const all = procs.filter(p => !p.finalizado);
-  const fin = procs.filter(p => p.finalizado);
+  const base = filteredForDashboard();
+  const all  = base.filter(p => !p.finalizado);
+  const fin  = base.filter(p =>  p.finalizado);
   const candidates = wfAlertCandidates();
-  const atrasados = candidates.filter(x => x.wf.alerta.urgencia === 'atrasado').length;
+  const atrasados  = candidates.filter(x => x.wf.alerta.urgencia === 'atrasado').length;
 
   // Etapas em andamento (conta por etapa ativa)
   const countByStep = {};
   WORKFLOW_STEPS.forEach(s => { countByStep[s.id] = 0; });
   all.forEach(p => { const wf = wfProcess(p); if (countByStep[wf.stepId] !== undefined) countByStep[wf.stepId]++; });
 
-  // Ag. Draft = etapas 2, 3, 4
-  const agDraft = (countByStep['step_02_nf_container']||0) + (countByStep['step_03_due']||0) + (countByStep['step_04_draft']||0);
-  // Ag. Desembaraço = etapas 5, 6, 7
-  const agDesemb = (countByStep['step_05_carregamento']||0) + (countByStep['step_06_chegada']||0) + (countByStep['step_07_desembaraco']||0);
-  // Pós embarque = 8-12
-  const posEmb = (countByStep['step_08_certificados']||0)+(countByStep['step_09_averbacao']||0)+(countByStep['step_10_docs']||0)+(countByStep['step_11_faturamento']||0)+(countByStep['step_12_faturado']||0);
+  const agDraft  = (countByStep['step_02_nf_container']||0) + (countByStep['step_03_due']||0)          + (countByStep['step_04_draft']||0);
+  const agDesemb = (countByStep['step_05_carregamento']||0) + (countByStep['step_06_chegada']||0)       + (countByStep['step_07_desembaraco']||0);
+  const posEmb   = (countByStep['step_08_certificados']||0) + (countByStep['step_09_averbacao']||0)     + (countByStep['step_10_docs']||0)
+                 + (countByStep['step_11_faturamento']||0)  + (countByStep['step_12_faturado']||0);
 
-  document.getElementById('kpis-area').innerHTML = `
+  // Indicador de filtro ativo
+  const fCl  = document.getElementById('f-cliente')?.value  || '';
+  const fAnaEl = document.getElementById('f-analista');
+  const fAna = fAnaEl?.value || '';
+  const fS   = document.getElementById('f-servico')?.value  || '';
+  const isFiltered = !!(fCl || fAna || fS);
+  const filterLabel = isFiltered
+    ? `<div style="font-size:10px;color:var(--blue);margin-bottom:6px;font-weight:600">▼ Exibindo: ${[fCl,fS,fAna?(window._allUsers||[]).find(u=>u.uid===fAna)?.nome||'':null].filter(Boolean).join(' · ')}</div>`
+    : '';
+
+  document.getElementById('kpis-area').innerHTML = (isFiltered ? `<div style="grid-column:1/-1;margin-bottom:-4px">${filterLabel}</div>` : '') + `
     <div class="kpi"><div class="kpi-lbl">Em andamento</div><div class="kpi-val" style="color:var(--blue)">${all.length}</div><div class="kpi-sub">processos ativos</div></div>
     <div class="kpi"><div class="kpi-lbl">Ag. Draft</div><div class="kpi-val" style="color:var(--amber)">${agDraft}</div><div class="kpi-sub">NF/DUE/Draft</div></div>
     <div class="kpi"><div class="kpi-lbl">Ag. Desembaraço</div><div class="kpi-val" style="color:var(--purple)">${agDesemb}</div><div class="kpi-sub">embarque/chegada</div></div>
@@ -1328,6 +1337,21 @@ function filtered() {
     if (q  && !txt.includes(q))  return false;
     if (fS && p.servico !== fS)  return false;
     if (fCl && p.cliente !== fCl) return false;
+    if (fAna && p.analistaUID !== fAna) return false;
+    return true;
+  });
+}
+
+// Subset de procs respeitando os filtros de exportador / analista / serviço
+// (não aplica busca textual nem tab ativo — usado pelos KPIs e alertas do painel)
+function filteredForDashboard() {
+  const fS   = document.getElementById('f-servico').value;
+  const fCl  = document.getElementById('f-cliente').value;
+  const fAnaEl = document.getElementById('f-analista');
+  const fAna = fAnaEl ? fAnaEl.value : '';
+  return procs.filter(p => {
+    if (fS  && p.servico  !== fS)  return false;
+    if (fCl && p.cliente  !== fCl) return false;
     if (fAna && p.analistaUID !== fAna) return false;
     return true;
   });
