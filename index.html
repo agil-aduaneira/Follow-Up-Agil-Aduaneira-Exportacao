@@ -1916,7 +1916,7 @@ function renderCadBody() {
                 ${window._isAdmin() ? `<button onclick="toggleExpConfigPanel('${c.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}', this)"
                   style="height:24px;padding:0 8px;border:1px solid var(--blue);background:var(--pale);
                   border-radius:var(--r4);font-size:10px;font-weight:600;cursor:pointer;color:var(--blue)">
-                  ⚙ Workflow</button>` : ''}
+                  ⚙ Procedimento</button>` : ''}
                 ${window._isAdmin() ? `<button class="btn-cad-del" onclick="cadDelImp(${i})" title="Remover">×</button>` : ''}
               </div>
             </div>
@@ -2131,7 +2131,7 @@ function toggleExpConfigPanel(nome, btn) {
   const isOpen = panel.style.display !== 'none';
   if (isOpen) {
     panel.style.display = 'none';
-    btn.innerHTML = '⚙ Workflow';
+    btn.innerHTML = '⚙ Procedimento';
     btn.style.background = 'var(--pale)';
     btn.style.borderColor = 'var(--blue)';
     btn.style.color = 'var(--blue)';
@@ -2167,7 +2167,7 @@ function renderExpConfigPanel(nome, panelEl) {
   const nomeEsc = nome.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
   panelEl.innerHTML = `
     <div style="background:var(--pale);border:1px solid var(--blue);border-radius:var(--r8);padding:12px;font-size:11px;margin-top:4px">
-      <div style="font-size:12px;font-weight:700;color:var(--navy);margin-bottom:10px">⚙ Workflow — ${nome}</div>
+      <div style="font-size:12px;font-weight:700;color:var(--navy);margin-bottom:10px">⚙ Procedimento — ${nome}</div>
 
       <div style="margin-bottom:12px">
         <div class="ecfg-sec-lbl">Tipos de Serviço disponíveis</div>
@@ -2261,11 +2261,40 @@ async function saveExpConfig(nome, containerEl) {
     return { id, label, tipo:row.querySelector('.ecfg-cp-tipo').value, etapa:row.querySelector('.ecfg-cp-etapa').value };
   }).filter(Boolean);
   const cfg = { tiposServico, etapas, camposExtras, _nome:nome };
+
+  // Feedback visual imediato no botão
+  const saveBtn = containerEl.querySelector('button[style*="navy"]');
+  if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Salvando...';
+    saveBtn.style.background = 'var(--g400)';
+  }
+
   if (typeof window._fbSaveExpConfig === 'function') {
-    await window._fbSaveExpConfig(nome, cfg);
-    if (!window._exportadoresConfig) window._exportadoresConfig = {};
-    window._exportadoresConfig[nome] = cfg;
-    showToast('✓ Configuração de "'+nome+'" salva!');
+    try {
+      await window._fbSaveExpConfig(nome, cfg);
+      if (!window._exportadoresConfig) window._exportadoresConfig = {};
+      window._exportadoresConfig[nome] = cfg;
+
+      // Confirmação visual no botão
+      if (saveBtn) {
+        saveBtn.textContent = '✓ Procedimento salvo!';
+        saveBtn.style.background = 'var(--green)';
+        setTimeout(() => {
+          saveBtn.disabled = false;
+          saveBtn.textContent = '💾 Salvar configuração';
+          saveBtn.style.background = 'var(--navy)';
+        }, 2500);
+      }
+      showToast('✓ Procedimento de "'+nome+'" salvo no Firestore!');
+    } catch(e) {
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = '💾 Salvar configuração';
+        saveBtn.style.background = 'var(--navy)';
+      }
+      showToast('⚠ Erro ao salvar: verifique as regras do Firestore.');
+    }
   }
 }
 
