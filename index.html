@@ -1307,7 +1307,7 @@ function populateSelects() {
   if (anaSel) {
     const curAna = anaSel.value;
     anaSel.innerHTML = '<option value="">Todos os analistas</option>';
-    const analistas = (window._allUsers||[]).filter(u=>u.perfil==='analista'||u.perfil==='admin').sort((a,b)=>(a.nome||'').localeCompare(b.nome||''));
+    const analistas = (window._allUsers||[]).filter(u=>u.ativo && (u.perfil==='analista'||u.perfil==='admin')).sort((a,b)=>(a.nome||'').localeCompare(b.nome||''));
     analistas.forEach(u => { anaSel.innerHTML += `<option value="${u.uid}" ${u.uid===curAna?'selected':''}>${u.nome}</option>`; });
   }
 }
@@ -2215,7 +2215,10 @@ function renderExpConfigPanel(nome, panelEl) {
   const nomeEsc = nome.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
   panelEl.innerHTML = `
     <div style="background:var(--pale);border:1px solid var(--blue);border-radius:var(--r8);padding:12px;font-size:11px;margin-top:4px">
-      <div style="font-size:12px;font-weight:700;color:var(--navy);margin-bottom:10px">⚙ Procedimento — ${nome}</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-size:12px;font-weight:700;color:var(--navy)">⚙ Procedimento — ${nome}</div>
+        ${DEFAULT_EXP_CONFIGS[nomeEsc] ? `<button onclick="ecfgRestaurarPadrao('${nomeEsc}',this)" style="font-size:10px;padding:2px 8px;border:1px solid var(--g300);background:#fff;border-radius:var(--r4);cursor:pointer;color:var(--g500)">↺ Restaurar padrão</button>` : ''}
+      </div>
 
       <div style="margin-bottom:12px">
         <div class="ecfg-sec-lbl">Tipos de Serviço disponíveis</div>
@@ -2298,6 +2301,40 @@ const PRAZO_EVENTO_OPTS = [
   ['dataSaidaNavio',   'Saída do Navio'],
   ['envFaturamento',   'Envio p/ Faturamento'],
 ];
+
+function ecfgRestaurarPadrao(nome, btn) {
+  if (!confirm(`Substituir os campos do Procedimento de "${nome}" pelo padrão pré-configurado?\n\nAs etapas e tipos de serviço não serão alterados.`)) return;
+  const def = DEFAULT_EXP_CONFIGS[nome];
+  if (!def || !def.camposExtras) return;
+  const panel = btn.closest('[style*="pale"]') || btn.closest('.exp-cfg-panel').firstElementChild;
+  const list = panel.querySelector('.ecfg-campos-list');
+  if (!list) return;
+  const etapaOpts = [
+    ['identificacao','Identificação'],['draft','Recebimento / DUE'],
+    ['carregamento','Carregamento'],['certificados','Certificados'],
+    ['averbacao','Averbação / Docs'],['faturamento','Faturamento'],
+  ].map(([v,l])=>`<option value="${v}">${l}</option>`).join('');
+  list.innerHTML = def.camposExtras.map(c => {
+    const isPrazo = c.tipo === 'prazo';
+    const tipoOpts = ['texto','data','simNao','numero','prazo'].map(t =>
+      `<option value="${t}"${c.tipo===t?' selected':''}>${{texto:'Texto',data:'Data',simNao:'Sim/Não',numero:'Número',prazo:'Prazo calculado'}[t]}</option>`).join('');
+    const eventoOpts = PRAZO_EVENTO_OPTS.map(([v,l])=>`<option value="${v}"${c.eventoRef===v?' selected':''}>${l}</option>`).join('');
+    return `<div class="ecfg-campo-row" data-id="${c.id}">
+      <input value="${c.label}" placeholder="Label" class="ecfg-cp-label ecfg-inp">
+      <select class="ecfg-cp-tipo ecfg-sel" onchange="ecfgTipoChange(this)">${tipoOpts}</select>
+      <select class="ecfg-cp-etapa ecfg-sel">${etapaOpts.replace(`value="${c.etapa}"`,`value="${c.etapa}" selected`)}</select>
+      <button onclick="this.closest('.ecfg-campo-row').remove()" class="ecfg-del-btn">×</button>
+      <div class="ecfg-prazo-extras" style="display:${isPrazo?'flex':'none'}">
+        <label>Evento:</label>
+        <select class="ecfg-cp-eventoRef ecfg-sel" style="flex:2">${eventoOpts}</select>
+        <label>+</label>
+        <input type="number" class="ecfg-cp-horas ecfg-inp ecfg-prazo-horas" value="${c.horas!=null?c.horas:24}" title="Use negativo para 'X horas antes do evento'">
+        <label>horas</label>
+      </div>
+    </div>`;
+  }).join('');
+  showToast('Campos restaurados — clique em Salvar configuração para gravar.');
+}
 
 function ecfgTipoChange(sel) {
   const row = sel.closest('.ecfg-campo-row');
