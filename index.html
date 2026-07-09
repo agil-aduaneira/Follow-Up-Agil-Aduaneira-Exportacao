@@ -1245,7 +1245,7 @@ function populateSelects() {
   if (anaSel) {
     const curAna = anaSel.value;
     anaSel.innerHTML = '<option value="">Todos os analistas</option>';
-    const analistas = (window._allUsers||[]).filter(u=>u.perfil==='analista').sort((a,b)=>(a.nome||'').localeCompare(b.nome||''));
+    const analistas = (window._allUsers||[]).filter(u=>u.perfil==='analista'||u.perfil==='admin').sort((a,b)=>(a.nome||'').localeCompare(b.nome||''));
     analistas.forEach(u => { anaSel.innerHTML += `<option value="${u.uid}" ${u.uid===curAna?'selected':''}>${u.nome}</option>`; });
   }
 }
