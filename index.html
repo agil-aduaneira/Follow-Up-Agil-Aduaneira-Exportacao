@@ -1273,7 +1273,13 @@ function renderKPIs() {
   WORKFLOW_STEPS.forEach(s => { countByStep[s.id] = 0; });
   all.forEach(p => { const wf = wfProcess(p); if (countByStep[wf.stepId] !== undefined) countByStep[wf.stepId]++; });
 
-  const agDraft  = (countByStep['step_02_nf_container']||0) + (countByStep['step_03_due']||0)          + (countByStep['step_04_draft']||0);
+  // agDraft: só conta processos de exportadores que têm draft ativo
+  const agDraft = all.filter(p => {
+    const cfg = getExpConfig(p.cliente);
+    if (cfg?.etapas?.envioVGM === false) return false; // exportador sem draft
+    const sid = (wfProcess(p)).stepId;
+    return sid === 'step_02_nf_container' || sid === 'step_03_due' || sid === 'step_04_draft';
+  }).length;
   const agDesemb = (countByStep['step_05_carregamento']||0) + (countByStep['step_06_chegada']||0)       + (countByStep['step_07_desembaraco']||0);
   const posEmb   = (countByStep['step_08_certificados']||0) + (countByStep['step_09_averbacao']||0)     + (countByStep['step_10_docs']||0)
                  + (countByStep['step_11_faturamento']||0)  + (countByStep['step_12_faturado']||0);
