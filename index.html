@@ -783,7 +783,7 @@ const WORKFLOW_STEPS = [
     dataRef: p => dtOf(p, 'deadlineDraft'),
     alertaMinutes: 4 * 60,
     proximaEtapa: 'step_05_carregamento',
-    pulaSeNA: p => !!p.draftNaoAgil,
+    pulaSeNA: p => !!p.draftNaoAgil || getExpConfig(p.cliente)?.etapas?.envioVGM === false,
     labelTimeline: 'Draft /\nVGM'
   },
   // ── Etapa 5 ───────────────────────────────────────────────────
