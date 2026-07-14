@@ -637,7 +637,7 @@ thead th .col-label{padding-left:4px}
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
     </div>
     <div class="wf-text">
-      <div class="wf-title">Alertas do Workflow</div>
+      <div class="wf-title">Alertas</div>
       <div class="wf-sub" id="wf-sub">—</div>
     </div>
     <div class="wf-chips" id="wf-chips"></div>
@@ -682,7 +682,7 @@ thead th .col-label{padding-left:4px}
 <div class="panel-overlay" id="panel-overlay" onclick="closePanel()"></div>
 <div class="panel" id="panel">
   <div class="panel-hd">
-    <h3>⚡ Alertas do Workflow</h3>
+    <h3>⚡ Alertas</h3>
     <button class="panel-close" onclick="closePanel()">×</button>
   </div>
   <div class="panel-body" id="panel-body"></div>
@@ -1230,6 +1230,26 @@ function wfAlertCandidates() {
     const alertaConf = alertaConferenciaPendente(p);
     if (alertaConf) {
       out.push({ p, wf: { stepId:'conf_pendente', nome:'Conferência não realizada', cls:'wf-nf-cont', icone:'📋', alerta: alertaConf }, hours: alertaConf.diffMin/60 });
+    }
+
+    // Chegada da Carga: alerta quando faltam ≤4h úteis para o deadline de carga (USIBRAS)
+    const cfgCheg = getExpConfig(p.cliente);
+    if (cfgCheg && cfgCheg.etapas && cfgCheg.etapas.haVistoriaToggle && !dtOf(p,'chegadaCarga')) {
+      const dlStr = dtOf(p,'deadlineCarga');
+      if (dlStr) {
+        const dlDt = parseDateTime(dlStr);
+        if (dlDt) {
+          // 4h úteis antes do deadline = referência de alerta
+          const alertaDt = addHorasUteis(dlDt, -4);
+          const now = new Date();
+          const diffMin = Math.round((dlDt - now) / 60000);
+          const diffAlerta = Math.round((alertaDt - now) / 60000);
+          if (diffAlerta <= 0 && diffMin > -24*60) { // dentro da janela de alerta
+            const urgencia = diffMin < 0 ? 'atrasado' : diffMin <= 60 ? 'urgente' : 'hoje';
+            out.push({ p, wf: { stepId:'chegada_carga_pendente', nome:'Chegada da Carga não registrada', cls:'wf-nf-cont', icone:'📦', alerta: { dataRefStr: formatDateTime(dlDt), diffMin, urgencia } }, hours: diffMin/60 });
+          }
+        }
+      }
     }
 
     // Vistória: container deve chegar 1 dia antes da data de vistória
@@ -1805,6 +1825,7 @@ function renderForm(p) {
       ${dtField('dataCarregamento', 'Data de Carregamento', p)}
       ${dtField('chegadaTerminal', 'Chegada ao Terminal', p)}
     </div>
+    <div id="form-anchor-etapa57"></div>
     ${dtField('desembaraco', 'Desembaraço', p)}
     ${dtField('deadlineCarga', 'Deadline Carga (Embarque)', p)}
 
@@ -2302,10 +2323,10 @@ const DEFAULT_EXP_CONFIGS = {
     tiposServico: ['Exportação Marítima','Exportação Aérea','Ficta'],
     etapas: { campoNavioTransito:true, envioVGM:true, carregamento:true, desembaraco:true, certificados:true, haVistoriaToggle:true },
     camposExtras: [
-      { id:'ext_n_lpco',        label:'N° LPCO',       tipo:'texto',  etapa:'certificados' },
-      { id:'ext_data_vistoria', label:'Data Vistória',  tipo:'data',   etapa:'certificados' },
-      { id:'ext_n_fito',        label:'N° Fito',        tipo:'texto',  etapa:'certificados' },
-      { id:'ext_fito_emitido',  label:'Fito Emitido',   tipo:'simNao', etapa:'certificados' },
+      { id:'ext_n_lpco',        label:'N° LPCO',       tipo:'texto',  etapa:'etapa57' },
+      { id:'ext_data_vistoria', label:'Data Vistória',  tipo:'data',   etapa:'etapa57' },
+      { id:'ext_n_fito',        label:'N° Fito',        tipo:'texto',  etapa:'etapa57' },
+      { id:'ext_fito_emitido',  label:'Fito Emitido',   tipo:'simNao', etapa:'etapa57' },
     ],
     _nome:'USIBRAS',
   },
@@ -2595,6 +2616,30 @@ async function saveExpConfig(nome, containerEl) {
   }
 }
 
+function _buildExtraCampoDiv(c, val) {
+  let inputHtml;
+  if (c.tipo === 'simNao') {
+    inputHtml = `<select id="fext-${c.id}" style="height:34px;padding:0 10px;border:1px solid var(--g200);border-radius:var(--r8);font-size:12px;outline:none;background:#fff;width:100%">
+      <option value="" ${!val?'selected':''}>—</option>
+      <option value="Sim" ${val==='Sim'?'selected':''}>Sim</option>
+      <option value="Não" ${val==='Não'?'selected':''}>Não</option></select>`;
+  } else if (c.tipo === 'data') {
+    inputHtml = `<input id="fext-${c.id}" value="${val}" placeholder="dd/mm/aaaa" maxlength="10" inputmode="numeric">`;
+  } else {
+    inputHtml = `<input id="fext-${c.id}" value="${val}" type="${c.tipo==='numero'?'number':'text'}">`;
+  }
+  const div = document.createElement('div');
+  div.className = 'fg form-extra-campo';
+  div.innerHTML = `<label>${c.label}</label>${inputHtml}`;
+  if (c.tipo === 'data') {
+    setTimeout(() => {
+      const el = document.getElementById('fext-'+c.id);
+      if (el && typeof applyDateMask === 'function') applyDateMask(el);
+    }, 0);
+  }
+  return div;
+}
+
 // Aplica a config do exportador ao formulário de processo (show/hide campos + injeta extras)
 function applyExpConfig(nome) {
   if (!nome) return;
@@ -2652,28 +2697,30 @@ function applyExpConfig(nome) {
     obsField.parentNode.insertBefore(vDiv, obsField);
   }
 
+  // Agrupa campos por âncora de etapa
+  const anchorMap = { 'etapa57': document.getElementById('form-anchor-etapa57') };
+  const camposEtapa57 = cfg.camposExtras.filter(c => c.etapa === 'etapa57' && c.tipo !== 'prazo');
+  if (camposEtapa57.length && anchorMap.etapa57) {
+    const hdr57 = document.createElement('div');
+    hdr57.className = 'fsec form-extra-campo';
+    hdr57.style.gridColumn = '1/-1';
+    hdr57.textContent = 'LPCO / Vistória / Fito';
+    anchorMap.etapa57.parentNode.insertBefore(hdr57, anchorMap.etapa57.nextSibling);
+    let insertRef = hdr57.nextSibling;
+    camposEtapa57.forEach(c => {
+      const div = _buildExtraCampoDiv(c, extCampos[c.id]||'');
+      anchorMap.etapa57.parentNode.insertBefore(div, insertRef);
+      insertRef = div.nextSibling;
+    });
+  }
+
   cfg.camposExtras.forEach(c => {
-    if (c.tipo === 'prazo') return; // calculado automaticamente, não editável no form
+    if (c.tipo === 'prazo') return;
+    if (c.etapa === 'etapa57') return; // já injetado acima
     const val = extCampos[c.id] || '';
-    let inputHtml;
-    if (c.tipo === 'simNao') {
-      inputHtml = `<select id="fext-${c.id}" style="height:34px;padding:0 10px;border:1px solid var(--g200);border-radius:var(--r8);font-size:12px;outline:none;background:#fff;width:100%">
-        <option value="" ${!val?'selected':''}>—</option>
-        <option value="Sim" ${val==='Sim'?'selected':''}>Sim</option>
-        <option value="Não" ${val==='Não'?'selected':''}>Não</option></select>`;
-    } else if (c.tipo === 'data') {
-      inputHtml = `<input id="fext-${c.id}" value="${val}" placeholder="dd/mm/aaaa" maxlength="10" inputmode="numeric">`;
-    } else {
-      inputHtml = `<input id="fext-${c.id}" value="${val}" type="${c.tipo==='numero'?'number':'text'}">`;
-    }
-    const div = document.createElement('div');
+    const div = _buildExtraCampoDiv(c, val);
     div.className = 'fg form-extra-campo';
-    div.innerHTML = `<label>${c.label}</label>${inputHtml}`;
     obsField.parentNode.insertBefore(div, obsField);
-    if (c.tipo === 'data') {
-      const el = document.getElementById('fext-'+c.id);
-      if (el && typeof applyDateMask === 'function') applyDateMask(el);
-    }
   });
 
   // Aplica estado inicial do toggle vistória
