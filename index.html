@@ -1158,6 +1158,9 @@ function alertaConferenciaPendente(p) {
   if (dtOf(p, 'conferencia')) return null; // já conferido
   const recebStr = dtOf(p, 'recebimento');
   if (!recebStr) return null;
+  // Só aplica para processos com recebimento a partir de 14/07/2026 (data de lançamento do campo)
+  const recebData = p.recebimentoData || '';
+  if (recebData && recebData < '2026-07-14') return null;
   const recebDt = parseDateTime(recebStr);
   if (!recebDt) return null;
   const deadline = addHorasUteis(recebDt, 5);
@@ -1825,7 +1828,7 @@ function renderForm(p) {
       ${dtField('dataCarregamento', 'Data de Carregamento', p)}
       ${dtField('chegadaTerminal', 'Chegada ao Terminal', p)}
     </div>
-    <div id="form-anchor-etapa57"></div>
+    <div id="form-anchor-etapa57" style="display:none"></div>
     ${dtField('desembaraco', 'Desembaraço', p)}
     ${dtField('deadlineCarga', 'Deadline Carga (Embarque)', p)}
 
