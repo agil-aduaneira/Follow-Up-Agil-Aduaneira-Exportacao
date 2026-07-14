@@ -1404,7 +1404,7 @@ function renderKPIs() {
   const all  = base.filter(p => !p.finalizado);
   const fin  = base.filter(p =>  p.finalizado);
   const candidates = wfAlertCandidates();
-  const atrasados  = candidates.filter(x => x.wf.alerta.urgencia === 'atrasado').length;
+  const atrasados  = new Set(candidates.filter(x => x.wf.alerta.urgencia === 'atrasado').map(x => x.p.id)).size;
 
   // Etapas em andamento (conta por etapa ativa)
   const countByStep = {};
