@@ -797,7 +797,7 @@ const WORKFLOW_STEPS = [
     dataRef: p => null,
     alertaMinutes: null,
     proximaEtapa: 'step_06_chegada',
-    pulaSeNA: p => false,
+    pulaSeNA: p => getExpConfig(p.cliente)?.etapas?.carregamento === false,
     labelTimeline: 'Carrega-\nmento'
   },
   // ── Etapa 6 ───────────────────────────────────────────────────
@@ -846,7 +846,7 @@ const WORKFLOW_STEPS = [
     ordemDisplay: 8,
     cls: 'wf-certif',
     icone: '📜',
-    concluidaQuando: p => !!dtOf(p, 'dataCertificados'),
+    concluidaQuando: p => !!dtOf(p, 'dataCertificados') || !!p.certificadosNA,
     dataRef: p => {
       const desemb = dtOf(p, 'desembaraco');
       if (!desemb) return null;
@@ -1128,6 +1128,47 @@ function pgHTML(p) {
 // Regra: até 24h após "Envio p/ Faturamento" preenchido, o processo deve ser
 // finalizado. Gera um alerta sintético independente do Workflow Engine
 // (que já considera o processo concluído ao chegar na etapa 12).
+// Soma horas úteis (seg-sex, 08h-18h) a uma data
+function addHorasUteis(dtInicio, horasUteis) {
+  const IH = 8, FH = 18;
+  let dt = new Date(dtInicio);
+  const proxUtil = d => {
+    while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
+    return d;
+  };
+  const ajustar = d => {
+    const dow = d.getDay(), h = d.getHours();
+    if (dow === 0 || dow === 6) { d.setHours(IH,0,0,0); proxUtil(d); }
+    else if (h < IH) d.setHours(IH,0,0,0);
+    else if (h >= FH) { d.setDate(d.getDate()+1); d.setHours(IH,0,0,0); proxUtil(d); }
+  };
+  ajustar(dt);
+  let restantes = horasUteis;
+  while (restantes > 0) {
+    const fim = new Date(dt); fim.setHours(FH,0,0,0);
+    const horasAte = (fim - dt) / 3600000;
+    if (restantes <= horasAte) { dt.setTime(dt.getTime() + restantes*3600000); restantes = 0; }
+    else { restantes -= horasAte; dt.setDate(dt.getDate()+1); dt.setHours(IH,0,0,0); proxUtil(dt); }
+  }
+  return dt;
+}
+
+// Alerta: Conferência não preenchida 5h úteis após Recebimento
+function alertaConferenciaPendente(p) {
+  if (dtOf(p, 'conferencia')) return null; // já conferido
+  const recebStr = dtOf(p, 'recebimento');
+  if (!recebStr) return null;
+  const recebDt = parseDateTime(recebStr);
+  if (!recebDt) return null;
+  const deadline = addHorasUteis(recebDt, 5);
+  const diffMin = (deadline - new Date()) / 60000;
+  let urgencia;
+  if (diffMin < 0) urgencia = 'atrasado';
+  else if (diffMin <= 60) urgencia = 'hoje';
+  else return null; // dentro do prazo — sem alerta ainda
+  return { dataRefStr: formatDateTime(deadline), diffMin, urgencia };
+}
+
 function alertaFinalizacaoPendente(p) {
   const envStr = dtOf(p, 'envFaturamento');
   if (!envStr) return null;
@@ -1185,6 +1226,11 @@ function wfAlertCandidates() {
     }
 
     alertasPrazoCalculado(p).forEach(item => out.push({ p, ...item }));
+
+    const alertaConf = alertaConferenciaPendente(p);
+    if (alertaConf) {
+      out.push({ p, wf: { stepId:'conf_pendente', nome:'Conferência não realizada', cls:'wf-nf-cont', icone:'📋', alerta: alertaConf }, hours: alertaConf.diffMin/60 });
+    }
   });
   out.sort((a,b) => a.hours - b.hours);
   return out;
@@ -1458,7 +1504,8 @@ function openDetail(id) {
 
     <div class="dsec">Etapas do Workflow</div>
     <div class="di"><div class="dl">Recebimento</div><div class="dv">${fv(dtOf(p,'recebimento'))}</div></div>
-    <div class="di"><div class="dl">Chegada da Carga / NF</div><div class="dv">${fv(dtOf(p,'chegadaCarga'))}</div></div>
+    <div class="di"><div class="dl">Conferência</div><div class="dv">${fv(dtOf(p,'conferencia'))}</div></div>
+    <div class="di"><div class="dl">Chegada da Carga</div><div class="dv">${fv(dtOf(p,'chegadaCarga'))}</div></div>
     <div class="di"><div class="dl">Registro DUE</div><div class="dv">${fv(dtOf(p,'regDue'))}</div></div>
     <div class="di"><div class="dl">Envio Draft</div><div class="dv">${p.draftNaoAgil?'<span class="draft-na">N/A — não resp. Ágil</span>':fv(dtOf(p,'draft'))}</div></div>
     <div class="di"><div class="dl">Deadline Draft</div><div class="dv">${fv(dtOf(p,'deadlineDraft'))}</div></div>
@@ -1466,7 +1513,7 @@ function openDetail(id) {
     <div class="di"><div class="dl">Chegada ao Terminal</div><div class="dv">${fv(dtOf(p,'chegadaTerminal'))}</div></div>
     <div class="di"><div class="dl">Desembaraço</div><div class="dv">${fv(dtOf(p,'desembaraco'))}</div></div>
     <div class="di"><div class="dl">Deadline Carga (Embarque)</div><div class="dv">${fv(dtOf(p,'deadlineCarga'))}</div></div>
-    <div class="di"><div class="dl">Certificados (CO/FORM A)</div><div class="dv">${fv(dtOf(p,'dataCertificados'))}</div></div>
+    <div class="di"><div class="dl">Certificados (CO/FORM A)</div><div class="dv">${p.certificadosNA ? '<span style="color:var(--muted);font-style:italic">N/A</span>' : fv(dtOf(p,'dataCertificados'))}</div></div>
     <div class="di"><div class="dl">Averbação</div><div class="dv">${fv(dtOf(p,'dataAverbacao'))}</div></div>
     <div class="di"><div class="dl">Data Saída do Navio</div><div class="dv">${fv(dtOf(p,'dataSaidaNavio'))}</div></div>
     <div class="di"><div class="dl">Documentos Enviados</div><div class="dv">${fv(p.documentosEnviados)}</div></div>
@@ -1663,7 +1710,8 @@ function renderForm(p) {
 
     <div class="fsec">Etapa 1–4 · Recebimento → Draft</div>
     ${dtField('recebimento', 'Recebimento', p)}
-    ${dtField('chegadaCarga', 'Chegada da Carga / NF', p)}
+    ${dtField('conferencia', 'Conferência', p)}
+    ${dtField('chegadaCarga', 'Chegada da Carga', p)}
     ${dtField('regDue', 'Registro DUE', p)}
 
     <div class="fg full" id="form-field-envioVGM">
@@ -1693,7 +1741,21 @@ function renderForm(p) {
 
     <div id="form-sec-certificados" style="display:contents">
       <div class="fsec">Etapa 8–10 · Certificados → Documentos</div>
-      ${dtField('dataCertificados', 'Certificados (CO/FORM A)', p)}
+      <div class="fg">
+        <label style="display:flex;align-items:center;gap:8px;">
+          Certificados (CO/FORM A)
+          <span style="font-size:11px;font-weight:500;color:var(--muted);margin-left:4px;">
+            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+              <input type="checkbox" id="f-certificadosNA" ${p && p.certificadosNA ? 'checked' : ''}
+                onchange="document.getElementById('f-dataCertificados').disabled=this.checked">
+              N/A
+            </label>
+          </span>
+        </label>
+        <input type="datetime-local" id="f-dataCertificados"
+          value="${p && p.dataCertificados ? p.dataCertificados : ''}"
+          ${p && p.certificadosNA ? 'disabled' : ''}>
+      </div>
       ${dtField('dataAverbacao', 'Averbação', p)}
       ${dtField('dataSaidaNavio', 'Data de Saída do Navio', p)}
       <div class="fg"><label>Documentos Enviados</label>
@@ -1799,7 +1861,7 @@ function acOutside(e) {
 // 'ddCarga' foi removido do formulário (duplicava Deadline Carga) e não
 // entra mais nessa lista, para não zerar o valor antigo de processos que
 // já tinham essa data preenchida.
-const EVENTOS_DT = ['recebimento','chegadaCarga','regDue','draft','deadlineDraft',
+const EVENTOS_DT = ['recebimento','conferencia','chegadaCarga','regDue','draft','deadlineDraft',
   'desembaraco','deadlineCarga','envFaturamento',
   // Novos do Workflow Engine:
   'dataCarregamento','chegadaTerminal','dataCertificados',
@@ -1819,6 +1881,8 @@ function saveProc() {
   obj.tipoNavio = document.getElementById('f-tipoNavio').value;
   obj.documentosEnviados = document.getElementById('f-documentosEnviados').value;
   obj.draftNaoAgil = !!(document.getElementById('f-draftNaoAgil') && document.getElementById('f-draftNaoAgil').checked);
+  const certNAEl = document.getElementById('f-certificadosNA');
+  obj.certificadosNA = certNAEl ? certNAEl.checked : false;
 
   // Analista responsável — select existe quando Admin (sempre) ou quando é
   // criação de processo novo (qualquer analista pode designar o responsável).
@@ -2756,7 +2820,7 @@ const ALL_COLS = [
   { id:'desembaracoData',       label:'Desembaraço',          render: p=>`<td>${dOf(p,'desembaraco')||'—'}</td>` },
   { id:'desembaracoHora',       label:'Hora Desembaraço',     render: p=>`<td style="color:var(--g500);font-size:11px">${hOf(p,'desembaraco')||'—'}</td>` },
   { id:'deadlineCargaData',     label:'Deadline Embarque',    render: p=>`<td>${dOf(p,'deadlineCarga')||'—'}</td>` },
-  { id:'dataCertificadosData',  label:'Certificados',         render: p=>`<td>${dOf(p,'dataCertificados')||'—'}</td>` },
+  { id:'dataCertificadosData',  label:'Certificados',         render: p=>`<td>${p.certificadosNA ? '<em style="color:var(--muted)">N/A</em>' : dOf(p,'dataCertificados')||'—'}</td>` },
   { id:'dataAverbacaoData',     label:'Averbação',            render: p=>`<td>${dOf(p,'dataAverbacao')||'—'}</td>` },
   { id:'dataSaidaNavioData',    label:'Saída Navio',          render: p=>`<td>${dOf(p,'dataSaidaNavio')||'—'}</td>` },
   { id:'documentosEnviados',    label:'Docs Enviados',        render: p=>`<td style="font-size:11px">${p.documentosEnviados||'—'}</td>` },
