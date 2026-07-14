@@ -1231,7 +1231,76 @@ function wfAlertCandidates() {
     if (alertaConf) {
       out.push({ p, wf: { stepId:'conf_pendente', nome:'Conferência não realizada', cls:'wf-nf-cont', icone:'📋', alerta: alertaConf }, hours: alertaConf.diffMin/60 });
     }
+
+    // Vistória: container deve chegar 1 dia antes da data de vistória
+    if (p.haVistoria !== false) {
+      const vistStr = (p.extCampos||{}).ext_data_vistoria;
+      if (vistStr) {
+        const vistDt = parseDateTime(vistStr + ' 00:00') || new Date(vistStr.split('/').reverse().join('-'));
+        if (vistDt && !isNaN(vistDt)) {
+          const chegadaStr = dtOf(p, 'chegadaTerminal');
+          const chegadaDt = chegadaStr ? parseDateTime(chegadaStr) : null;
+          const deadline1DiaBefore = new Date(vistDt.getTime() - 24 * 3600000);
+          if (!chegadaDt || chegadaDt > deadline1DiaBefore) {
+            const now = new Date();
+            const diffMin = Math.round((deadline1DiaBefore - now) / 60000);
+            if (diffMin <= 24 * 60) {
+              const urgencia = diffMin < 0 ? 'atrasado' : diffMin <= 60 ? 'urgente' : 'hoje';
+              out.push({ p, wf: { stepId:'vistoria_chegada', nome:'Chegada container antes da vistória', cls:'wf-certif', icone:'🔍', alerta: { dataRefStr: formatDateTime(deadline1DiaBefore), diffMin, urgencia } }, hours: diffMin/60 });
+            }
+          }
+        }
+      }
+    }
+
+    // Fito Emitido: alerta 4 dias após saída do navio (USIBRAS)
+    const cfg = getExpConfig(p.cliente);
+    const temFitoExtra = cfg && cfg.camposExtras && cfg.camposExtras.some(c => c.id === 'ext_fito_emitido');
+    if (temFitoExtra && (p.extCampos||{}).ext_fito_emitido !== 'Sim') {
+      const saidaStr = dtOf(p, 'dataSaidaNavio');
+      if (saidaStr) {
+        const saidaDt = parseDateTime(saidaStr);
+        if (saidaDt) {
+          const deadline = new Date(saidaDt.getTime() + 4 * 24 * 3600000);
+          const now = new Date();
+          const diffMin = Math.round((deadline - now) / 60000);
+          if (diffMin <= 60) {
+            const urgencia = diffMin < 0 ? 'atrasado' : diffMin <= 60 ? 'urgente' : 'hoje';
+            out.push({ p, wf: { stepId:'fito_pendente', nome:'Fito Emitido pendente (4 dias)', cls:'wf-certif', icone:'🌿', alerta: { dataRefStr: formatDateTime(deadline), diffMin, urgencia } }, hours: diffMin/60 });
+          }
+        }
+      }
+    }
   });
+
+  // AGEX duplicado no ciclo 18→18
+  const todosAtivos = filteredForDashboard().filter(p => !p.finalizado && p.agex && p.agex.trim());
+  function ciclo18(dataStr) {
+    const d = dataStr ? parseDateTime(dataStr) : new Date();
+    const ref = d || new Date();
+    const dia = ref.getDate();
+    const mes = ref.getMonth();
+    const ano = ref.getFullYear();
+    if (dia >= 18) return new Date(ano, mes, 18);
+    return mes === 0 ? new Date(ano - 1, 11, 18) : new Date(ano, mes - 1, 18);
+  }
+  const agexVistos = {};
+  todosAtivos.forEach(p => {
+    const key = (p.cliente||'') + '|' + p.agex.trim().toUpperCase();
+    const inicio = ciclo18(dtOf(p,'recebimento') || p.recebimentoData);
+    const cicloKey = key + '|' + inicio.getTime();
+    if (!agexVistos[cicloKey]) { agexVistos[cicloKey] = []; }
+    agexVistos[cicloKey].push(p);
+  });
+  Object.values(agexVistos).forEach(lista => {
+    if (lista.length > 1) {
+      lista.forEach(p => {
+        const alerta = { dataRefStr: null, diffMin: -9999, urgencia: 'atrasado' };
+        out.push({ p, wf: { stepId:'agex_duplicado', nome:`AGEX ${p.agex} duplicado no ciclo mensal`, cls:'wf-draft', icone:'⚠️', alerta }, hours: -9999 });
+      });
+    }
+  });
+
   out.sort((a,b) => a.hours - b.hours);
   return out;
 }
@@ -1729,7 +1798,7 @@ function renderForm(p) {
       </div>
     </div>
 
-    ${dtField('deadlineDraft', 'Deadline Draft', p)}
+    <div id="form-field-deadlineDraft">${dtField('deadlineDraft', 'Deadline Draft', p)}</div>
 
     <div class="fsec">Etapa 5–7 · Desembaraço</div>
     <div id="form-sec-carregamento" style="display:contents">
@@ -1756,20 +1825,20 @@ function renderForm(p) {
           value="${p && p.dataCertificados ? p.dataCertificados : ''}"
           ${p && p.certificadosNA ? 'disabled' : ''}>
       </div>
-      ${dtField('dataAverbacao', 'Averbação', p)}
       ${dtField('dataSaidaNavio', 'Data de Saída do Navio', p)}
-      <div class="fg"><label>Documentos Enviados</label>
+      ${dtField('dataAverbacao', 'Averbação', p)}
+      <div id="form-field-documentosEnviados"><div class="fg"><label>Documentos Enviados</label>
         <select id="f-documentosEnviados">
           <option value="" ${!v('documentosEnviados')?'selected':''}>—</option>
           <option value="Sim" ${v('documentosEnviados')==='Sim'?'selected':''}>Sim</option>
           <option value="Não" ${v('documentosEnviados')==='Não'?'selected':''}>Não</option>
         </select>
-      </div>
+      </div></div>
     </div>
 
     <div class="fsec">Etapa 11–12 · Faturamento</div>
     ${dtField('envFaturamento', 'Envio para Faturamento', p)}
-    ${dtField('dataFaturamento', 'Faturamento Realizado', p)}
+    ${(window._rbac.perfil === 'admin' || window._rbac.perfil === 'financeiro') ? dtField('dataFaturamento', 'Faturamento Realizado', p) : ''}
 
     <div class="fsec">Financeiro / Parceiro</div>
     <div class="fg full"><label>Houve Ação de Parceiro?</label>
@@ -1883,6 +1952,8 @@ function saveProc() {
   obj.draftNaoAgil = !!(document.getElementById('f-draftNaoAgil') && document.getElementById('f-draftNaoAgil').checked);
   const certNAEl = document.getElementById('f-certificadosNA');
   obj.certificadosNA = certNAEl ? certNAEl.checked : false;
+  const haVistEl = document.getElementById('f-haVistoria');
+  if (haVistEl) obj.haVistoria = haVistEl.checked;
 
   // Analista responsável — select existe quando Admin (sempre) ou quando é
   // criação de processo novo (qualquer analista pode designar o responsável).
@@ -2229,7 +2300,7 @@ function cadDelImp(i) {
 const DEFAULT_EXP_CONFIGS = {
   'USIBRAS': {
     tiposServico: ['Exportação Marítima','Exportação Aérea','Ficta'],
-    etapas: { campoNavioTransito:true, envioVGM:true, carregamento:true, desembaraco:true, certificados:true },
+    etapas: { campoNavioTransito:true, envioVGM:true, carregamento:true, desembaraco:true, certificados:true, haVistoriaToggle:true },
     camposExtras: [
       { id:'ext_n_lpco',        label:'N° LPCO',       tipo:'texto',  etapa:'certificados' },
       { id:'ext_data_vistoria', label:'Data Vistória',  tipo:'data',   etapa:'certificados' },
@@ -2240,7 +2311,7 @@ const DEFAULT_EXP_CONFIGS = {
   },
   'PARAIPABA': {
     tiposServico: ['Exportação Marítima'],
-    etapas: { campoNavioTransito:true, envioVGM:false, carregamento:false, desembaraco:true, certificados:true },
+    etapas: { campoNavioTransito:true, envioVGM:false, carregamento:false, desembaraco:true, certificados:true, deadlineDraft:false, documentosEnviados:false },
     camposExtras: [],
     _nome:'PARAIPABA',
   },
@@ -2541,10 +2612,12 @@ function applyExpConfig(nome) {
   // 2. Mostrar/ocultar etapas
   if (cfg && cfg.etapas) {
     const s = (id, vis, dc) => { const el=document.getElementById(id); if(el) el.style.display=vis?(dc||''):'none'; };
-    s('form-field-tipoNavio', cfg.etapas.campoNavioTransito !== false);
-    s('form-field-envioVGM',  cfg.etapas.envioVGM           !== false);
-    s('form-sec-carregamento',cfg.etapas.carregamento        !== false, 'contents');
-    s('form-sec-certificados',cfg.etapas.certificados        !== false, 'contents');
+    s('form-field-tipoNavio',           cfg.etapas.campoNavioTransito   !== false);
+    s('form-field-envioVGM',            cfg.etapas.envioVGM             !== false);
+    s('form-field-deadlineDraft',       cfg.etapas.deadlineDraft        !== false);
+    s('form-sec-carregamento',          cfg.etapas.carregamento         !== false, 'contents');
+    s('form-sec-certificados',          cfg.etapas.certificados         !== false, 'contents');
+    s('form-field-documentosEnviados',  cfg.etapas.documentosEnviados   !== false);
   }
 
   // 3. Campos extras: remove os anteriores e injeta os do exportador atual
@@ -2560,6 +2633,24 @@ function applyExpConfig(nome) {
   hdr.style.gridColumn = '1/-1';
   hdr.textContent = 'Campos do Cliente';
   obsField.parentNode.insertBefore(hdr, obsField);
+
+  // Toggle "Haverá Vistória?" (USIBRAS e configs com haVistoriaToggle)
+  const haVistToggle = cfg.etapas && cfg.etapas.haVistoriaToggle;
+  const haVistoriaAtual = p.haVistoria !== false; // padrão = Sim quando não definido
+  if (haVistToggle) {
+    const vDiv = document.createElement('div');
+    vDiv.className = 'fg full form-extra-campo';
+    vDiv.innerHTML = `<label>Haverá Vistória?</label>
+      <div class="toggle-wrap">
+        <span class="toggle-wrap-txt">Não — sem vistória; data será igual ao Deadline de Carga</span>
+        <label class="toggle-chk">
+          <input type="checkbox" id="f-haVistoria" ${haVistoriaAtual ? 'checked' : ''}
+            onchange="toggleVistoriaForm(this.checked)">
+          <span class="slider"></span>
+        </label>
+      </div>`;
+    obsField.parentNode.insertBefore(vDiv, obsField);
+  }
 
   cfg.camposExtras.forEach(c => {
     if (c.tipo === 'prazo') return; // calculado automaticamente, não editável no form
@@ -2584,7 +2675,24 @@ function applyExpConfig(nome) {
       if (el && typeof applyDateMask === 'function') applyDateMask(el);
     }
   });
+
+  // Aplica estado inicial do toggle vistória
+  if (haVistToggle) toggleVistoriaForm(haVistoriaAtual);
 }
+
+function toggleVistoriaForm(haVist) {
+  const vistEl = document.getElementById('fext-ext_data_vistoria');
+  if (!vistEl) return;
+  if (haVist) {
+    vistEl.disabled = false;
+    vistEl.style.background = '';
+  } else {
+    // Preenche com o deadline de carga e desabilita
+    const dlEl = document.getElementById('f-deadlineCargaData') || document.getElementById('f-deadlineCarga');
+    if (dlEl && dlEl.value) vistEl.value = dlEl.value.substring(0, 10);
+    vistEl.disabled = true;
+    vistEl.style.background = 'var(--g50)';
+  }
 
 // Renderiza campos extras no modal de visualização (openDetail)
 function renderExtCamposDetail(p) {
