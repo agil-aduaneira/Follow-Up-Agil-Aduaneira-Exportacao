@@ -900,7 +900,7 @@ const WORKFLOW_STEPS = [
     },
     alertaMinutes: 12 * 60,
     proximaEtapa: 'step_11_faturamento',
-    pulaSeNA: p => false,
+    pulaSeNA: p => getExpConfig(p.cliente)?.etapas?.documentosEnviados === false,
     labelTimeline: 'Envio\nDocs'
   },
   // ── Etapa 11 ──────────────────────────────────────────────────
