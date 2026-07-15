@@ -889,7 +889,7 @@ const WORKFLOW_STEPS = [
     ordemDisplay: 10,
     cls: 'wf-docs',
     icone: '📦',
-    concluidaQuando: p => p.documentosEnviados === 'Sim',
+    concluidaQuando: p => p.documentosEnviados === 'Sim' || p.documentosEnviados === 'Não',
     dataRef: p => {
       const saida = dtOf(p, 'dataSaidaNavio') || dtOf(p, 'dataCarregamento');
       if (!saida) return null;
